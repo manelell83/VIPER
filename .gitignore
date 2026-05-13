@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+.venv/
+venv/
+env/
+*.egg-info/
+.eggs/
+dist/
+build/
+*.so
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Environment
+.env
+!.env.example
+
+# Node
+node_modules/
+frontend/dist/
+frontend/build/
+.npm
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+logs/
+
+# Docker volumes
+viperv2-db/

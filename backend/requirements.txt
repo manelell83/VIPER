@@ -1,0 +1,19 @@
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
+websockets==14.1
+pydantic==2.10.3
+pydantic-settings==2.6.1
+sqlalchemy==2.0.36
+python-multipart==0.0.18
+
+# Network scanning
+psutil==6.1.0
+scapy==2.6.0
+python-nmap==0.7.1
+
+# Reports
+reportlab==4.2.5
+
+# Utilities
+python-dotenv==1.0.1
+ipaddress==1.0.23

@@ -1,0 +1,22 @@
+FROM python:3.11-slim
+
+# Install system dependencies (nmap for port scanning)
+RUN apt-get update && apt-get install -y \
+    nmap \
+    libpcap-dev \
+    iputils-ping \
+    net-tools \
+    arp-scan \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+EXPOSE 8000
+
+# Run with elevated privileges for ARP/raw socket access
+CMD ["python", "run.py"]

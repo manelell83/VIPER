@@ -1,0 +1,35 @@
+version: "3.9"
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: ../docker/Dockerfile.backend
+    container_name: viperv2-backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - viperv2-db:/app/data
+    environment:
+      - DATABASE_URL=sqlite:////app/data/viperv2.db
+    # Required for ARP scanning and raw sockets
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: ../docker/Dockerfile.frontend
+    container_name: viperv2-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  viperv2-db:
