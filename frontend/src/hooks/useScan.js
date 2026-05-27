@@ -12,7 +12,10 @@ const initialState = {
   error: null,
   vulnCount: 0,
   vulnScanActive: false,
-  attackGraph: null,  // { nodes, edges, paths, risk_level } when ready
+  attackGraph: null,          // { nodes, edges, paths, risk_level } when ready
+  exploitCount: 0,            // total exploitability assessments
+  weaponizedCount: 0,         // weaponized/functional exploits found
+  remediationCount: 0,        // remediation items generated
 };
 
 export function useScan() {
@@ -79,6 +82,26 @@ export function useScan() {
 
           case "vulnerability_scan_complete":
             _updateState({ vulnScanActive: false, message: data.message });
+            break;
+
+          case "exploitability_detected":
+            setState((s) => ({ ...s, exploitCount: s.exploitCount + 1 }));
+            break;
+
+          case "critical_risk_identified":
+            setState((s) => ({
+              ...s,
+              weaponizedCount: data.data?.critical_exploitable ?? s.weaponizedCount,
+              message: data.message,
+            }));
+            break;
+
+          case "remediation_generated":
+            setState((s) => ({
+              ...s,
+              remediationCount: data.data?.remediation_count ?? s.remediationCount,
+              message: data.message,
+            }));
             break;
 
           case "attack_graph_generated":

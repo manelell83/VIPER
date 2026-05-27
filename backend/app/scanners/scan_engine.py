@@ -14,6 +14,7 @@ from app.scanners.network_calculator import resolve_target
 from app.vulnerability_scanner.vulnerability_engine import scan_all_hosts_vulnerabilities
 from app.attack_graph.graph_builder import build_attack_graph
 from app.attack_graph.path_engine import generate_attack_paths
+from app.exploitability.exploitability_engine import run_exploitability_analysis
 
 executor = ThreadPoolExecutor(max_workers=4)
 
@@ -101,6 +102,13 @@ async def run_network_scan(scan_id: str, interface_name: str, db: Session, emit:
         db_hosts = db.query(Host).filter(Host.scan_id == scan_id).all()
         total_vulns = await scan_all_hosts_vulnerabilities(db_hosts, db, emit)
 
+        # --- Exploitability Analysis ---
+        await emit({"type": "progress", "message": "Analyzing exploitability...", "percent": 94})
+        try:
+            await run_exploitability_analysis(scan_id, db, emit)
+        except Exception as exp_exc:
+            await emit({"type": "progress", "message": f"Exploitability analysis skipped: {exp_exc}", "percent": 95})
+
         # --- Attack Graph Generation ---
         await emit({"type": "progress", "message": "Building attack graph...", "percent": 96})
         try:
@@ -175,6 +183,13 @@ async def run_domain_scan(scan_id: str, target: str, db: Session, emit: Emitter)
         await emit({"type": "progress", "message": "Looking up CVEs...", "percent": 85})
         total_vulns = await scan_all_hosts_vulnerabilities([host], db, emit)
         db.refresh(host)
+
+        # --- Exploitability Analysis ---
+        await emit({"type": "progress", "message": "Analyzing exploitability...", "percent": 93})
+        try:
+            await run_exploitability_analysis(scan_id, db, emit)
+        except Exception as exp_exc:
+            await emit({"type": "progress", "message": f"Exploitability analysis skipped: {exp_exc}", "percent": 95})
 
         # --- Attack Graph Generation ---
         await emit({"type": "progress", "message": "Building attack graph...", "percent": 96})

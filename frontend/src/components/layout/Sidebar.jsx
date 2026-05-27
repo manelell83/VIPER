@@ -2,6 +2,7 @@ import { NavLink } from "react-router-dom";
 import {
   LayoutDashboard, Network, Globe, GitFork,
   FileText, History, Shield, Sun, Moon, AlertTriangle, Crosshair, Route,
+  ShieldAlert, ClipboardList,
 } from "lucide-react";
 import { useTheme } from "../../hooks/useTheme";
 
@@ -13,6 +14,8 @@ const NAV = [
   { to: "/vulnerabilities", icon: AlertTriangle, label: "Vulnerabilities" },
   { to: "/attack-graph", icon: Crosshair, label: "Attack Graph" },
   { to: "/attack-paths", icon: Route, label: "Attack Paths" },
+  { to: "/exploitability", icon: ShieldAlert, label: "Exploitability" },
+  { to: "/security-report", icon: ClipboardList, label: "Security Report" },
   { to: "/history", icon: History, label: "History" },
   { to: "/reports", icon: FileText, label: "Reports" },
 ];

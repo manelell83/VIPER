@@ -9,6 +9,8 @@ import Reports from "./pages/Reports";
 import Vulnerabilities from "./pages/Vulnerabilities";
 import AttackGraph from "./pages/AttackGraph";
 import AttackPaths from "./pages/AttackPaths";
+import Exploitability from "./pages/Exploitability";
+import SecurityReport from "./pages/SecurityReport";
 
 export default function App() {
   return (
@@ -25,6 +27,8 @@ export default function App() {
           <Route path="vulnerabilities" element={<Vulnerabilities />} />
           <Route path="attack-graph" element={<AttackGraph />} />
           <Route path="attack-paths" element={<AttackPaths />} />
+          <Route path="exploitability" element={<Exploitability />} />
+          <Route path="security-report" element={<SecurityReport />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>
