@@ -49,6 +49,9 @@ class Host(Base):
     discovered_at = Column(DateTime, default=datetime.utcnow)
 
     scan = relationship("ScanSession", back_populates="hosts")
+    vulnerabilities = relationship(
+        "Vulnerability", back_populates="host", cascade="all, delete-orphan"
+    )
 
     @property
     def ports(self):
@@ -65,6 +68,13 @@ class Host(Base):
     def open_ports_count(self):
         return sum(1 for p in self.ports if p.get("state") == "open")
 
+    @property
+    def vuln_count(self):
+        return len(self.vulnerabilities) if self.vulnerabilities else 0
+
+    def max_severity(self) -> str:
+        return self._max_severity()
+
     def to_dict(self):
         return {
             "id": self.id,
@@ -77,5 +87,15 @@ class Host(Base):
             "status": self.status,
             "ports": self.ports,
             "open_ports_count": self.open_ports_count,
+            "vuln_count": self.vuln_count,
+            "max_severity": self.max_severity(),
             "discovered_at": self.discovered_at.isoformat() if self.discovered_at else None,
         }
+
+    def _max_severity(self) -> str:
+        order = ["CRITICAL", "HIGH", "MEDIUM", "LOW", "NONE"]
+        sev_set = {v.severity for v in (self.vulnerabilities or [])}
+        for s in order:
+            if s in sev_set:
+                return s
+        return "NONE"

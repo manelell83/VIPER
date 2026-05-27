@@ -52,6 +52,8 @@ async def get_topology(scan_id: str, db: Session = Depends(get_db)):
                 "os": host.os or "Unknown",
                 "open_ports": host.open_ports_count,
                 "status": host.status,
+                "vuln_count": host.vuln_count,
+                "max_severity": host.max_severity(),
             }
         })
 

@@ -10,6 +10,8 @@ const initialState = {
   hosts: [],
   logs: [],
   error: null,
+  vulnCount: 0,
+  vulnScanActive: false,
 };
 
 export function useScan() {
@@ -66,17 +68,30 @@ export function useScan() {
             }));
             break;
 
+          case "vulnerability_scan_started":
+            _updateState({ vulnScanActive: true, message: data.message });
+            break;
+
+          case "vulnerability_detected":
+            setState((s) => ({ ...s, vulnCount: s.vulnCount + 1 }));
+            break;
+
+          case "vulnerability_scan_complete":
+            _updateState({ vulnScanActive: false, message: data.message });
+            break;
+
           case "completed":
             _updateState({
               status: "completed",
               progress: 100,
               message: data.message,
+              vulnScanActive: false,
             });
             wsRef.current?.close();
             break;
 
           case "error":
-            _updateState({ status: "failed", error: data.message });
+            _updateState({ status: "failed", error: data.message, vulnScanActive: false });
             wsRef.current?.close();
             break;
         }

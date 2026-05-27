@@ -3,9 +3,17 @@ import cytoscape from "cytoscape";
 import { ZoomIn, ZoomOut, Maximize2, RotateCcw } from "lucide-react";
 
 const NODE_COLORS = {
-  gateway: { bg: "#f59e0b", border: "#d97706", text: "#1a1d29" },
-  host: { bg: "#0ea5e9", border: "#0284c7", text: "#ffffff" },
-  target: { bg: "#8b5cf6", border: "#7c3aed", text: "#ffffff" },
+  gateway:  { bg: "#f59e0b", border: "#d97706", text: "#1a1d29" },
+  host:     { bg: "#0ea5e9", border: "#0284c7", text: "#ffffff" },
+  target:   { bg: "#8b5cf6", border: "#7c3aed", text: "#ffffff" },
+};
+
+// Severity overrides applied on top of host/target color
+const SEVERITY_COLORS = {
+  CRITICAL: { bg: "#ef4444", border: "#b91c1c" },
+  HIGH:     { bg: "#f97316", border: "#c2410c" },
+  MEDIUM:   { bg: "#eab308", border: "#a16207" },
+  LOW:      { bg: "#14b8a6", border: "#0f766e" },
 };
 
 const CYTOSCAPE_STYLE = [
@@ -113,13 +121,17 @@ export default function TopologyViewer({ elements, onNodeClick }) {
 
     const nodes = (elements.nodes ?? []).map((n) => {
       const type = n.data.type ?? "host";
-      const colors = NODE_COLORS[type] ?? NODE_COLORS.host;
+      const baseColors = NODE_COLORS[type] ?? NODE_COLORS.host;
+      const severity = n.data.max_severity;
+      const sevColors = type !== "gateway" && severity ? SEVERITY_COLORS[severity] : null;
+      const colors = sevColors ?? baseColors;
       return {
         ...n,
         data: {
           ...n.data,
           bgColor: colors.bg,
           borderColor: colors.border,
+          label: n.data.label + (n.data.vuln_count ? `\n⚠ ${n.data.vuln_count}` : ""),
         },
       };
     });
@@ -163,6 +175,15 @@ export default function TopologyViewer({ elements, onNodeClick }) {
             <span className="text-tertiary capitalize">{type}</span>
           </div>
         ))}
+        <div className="border-t border-[var(--color-border)] mt-1 pt-1 space-y-1">
+          {Object.entries(SEVERITY_COLORS).map(([sev, c]) => (
+            <div key={sev} className="flex items-center gap-2">
+              <span className="w-3 h-3 rounded-full inline-block border"
+                style={{ background: c.bg, borderColor: c.border }} />
+              <span className="text-tertiary capitalize">{sev.toLowerCase()} CVEs</span>
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* Cytoscape canvas */}
@@ -176,6 +197,12 @@ export default function TopologyViewer({ elements, onNodeClick }) {
           {selected.os && <p className="text-xs text-tertiary mt-1">{selected.os}</p>}
           {selected.mac && <p className="text-xs font-mono text-muted mt-1">{selected.mac}</p>}
           <p className="text-xs text-blue-400 mt-1">{selected.open_ports ?? 0} open port(s)</p>
+          {selected.vuln_count > 0 && (
+            <p className="text-xs text-orange-400 mt-0.5">
+              {selected.vuln_count} CVE{selected.vuln_count !== 1 ? "s" : ""}
+              {selected.max_severity ? ` · ${selected.max_severity}` : ""}
+            </p>
+          )}
         </div>
       )}
 

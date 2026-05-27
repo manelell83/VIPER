@@ -1,19 +1,23 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Network, Globe, Server, Lock, ArrowRight, Activity, Clock } from "lucide-react";
+import { Network, Globe, Server, Lock, ArrowRight, Activity, Clock, AlertTriangle, ShieldAlert } from "lucide-react";
 import { resultsApi } from "../services/api";
+import API from "../services/api";
 import { StatusBadge } from "../components/ui/Badge";
 import { LoadingOverlay } from "../components/ui/Loading";
 
 export default function Dashboard() {
   const [scans, setScans] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [vulnStats, setVulnStats] = useState(null);
 
   useEffect(() => {
     resultsApi.list()
       .then((res) => setScans(res.scans))
       .catch(() => {})
       .finally(() => setLoading(false));
+
+    API.get("/vulnerabilities/stats").then(setVulnStats).catch(() => {});
   }, []);
 
   const stats = {
@@ -38,6 +42,35 @@ export default function Dashboard() {
         <StatCard icon={Lock} label="Completed" value={stats.completed} color="purple" />
         <StatCard icon={Clock} label="Running" value={stats.running} color="yellow" pulse={stats.running > 0} />
       </div>
+
+      {/* Vulnerability stats */}
+      {vulnStats && (
+        <div className="card">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-semibold text-primary flex items-center gap-2">
+              <ShieldAlert size={15} className="text-orange-400" />
+              Vulnerability Overview
+            </h2>
+            <Link to="/vulnerabilities" className="text-xs text-info flex items-center gap-1 hover:underline">
+              View all <ArrowRight size={11} />
+            </Link>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            {[
+              { label: "Critical", value: vulnStats.by_severity?.critical ?? 0, color: "text-red-500 bg-red-500/10" },
+              { label: "High",     value: vulnStats.by_severity?.high ?? 0,     color: "text-orange-500 bg-orange-500/10" },
+              { label: "Medium",   value: vulnStats.by_severity?.medium ?? 0,   color: "text-yellow-500 bg-yellow-500/10" },
+              { label: "Low",      value: vulnStats.by_severity?.low ?? 0,      color: "text-blue-500 bg-blue-500/10" },
+              { label: "Total CVEs", value: vulnStats.total ?? 0,              color: "text-muted bg-[var(--color-bg-surface-hover)]" },
+            ].map(({ label, value, color }) => (
+              <div key={label} className={`rounded-xl p-3 text-center ${color}`}>
+                <p className="text-lg font-bold">{value}</p>
+                <p className="text-xs mt-0.5 opacity-80">{label}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Quick actions */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

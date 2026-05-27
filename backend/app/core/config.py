@@ -21,6 +21,11 @@ class Settings(BaseSettings):
     PORT_SCAN_RANGE: str = "1-1024"
     NMAP_ARGUMENTS: str = "-sV -O --host-timeout 60s -T4"
 
+    # Vulnerability / CVE settings
+    NVD_API_KEY: str = ""               # optional, increases NVD rate limit
+    CVE_CACHE_TTL: int = 3600           # seconds to cache CVE results (1 hour)
+    VULN_SCAN_ENABLED: bool = True      # toggle vulnerability scanning
+
     class Config:
         env_file = ".env"
         extra = "ignore"

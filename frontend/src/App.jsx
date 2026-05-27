@@ -6,6 +6,7 @@ import DomainScan from "./pages/DomainScan";
 import Topology from "./pages/Topology";
 import { HistoryList, ScanDetail } from "./pages/History";
 import Reports from "./pages/Reports";
+import Vulnerabilities from "./pages/Vulnerabilities";
 
 export default function App() {
   return (
@@ -19,6 +20,7 @@ export default function App() {
           <Route path="history" element={<HistoryList />} />
           <Route path="history/:id" element={<ScanDetail />} />
           <Route path="reports" element={<Reports />} />
+          <Route path="vulnerabilities" element={<Vulnerabilities />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>

@@ -11,6 +11,7 @@ from app.scanners.interface_detector import get_interface_by_name
 from app.scanners.arp_scanner import arp_scan
 from app.scanners.port_scanner import port_scan
 from app.scanners.network_calculator import resolve_target
+from app.vulnerability_scanner.vulnerability_engine import scan_all_hosts_vulnerabilities
 
 executor = ThreadPoolExecutor(max_workers=4)
 
@@ -93,12 +94,17 @@ async def run_network_scan(scan_id: str, interface_name: str, db: Session, emit:
                 "percent": pct + 2,
             })
 
+        # --- Vulnerability Scanning ---
+        await emit({"type": "progress", "message": "Starting CVE vulnerability lookup...", "percent": 92})
+        db_hosts = db.query(Host).filter(Host.scan_id == scan_id).all()
+        total_vulns = await scan_all_hosts_vulnerabilities(db_hosts, db, emit)
+
         _complete(scan, db)
 
         await emit({
             "type": "completed",
-            "message": f"Scan complete. {total} host(s) found.",
-            "data": {"hosts_count": total},
+            "message": f"Scan complete. {total} host(s), {total_vulns} CVE(s) found.",
+            "data": {"hosts_count": total, "vuln_count": total_vulns},
             "percent": 100,
         })
 
@@ -143,12 +149,17 @@ async def run_domain_scan(scan_id: str, target: str, db: Session, emit: Emitter)
         db.commit()
         db.refresh(host)
 
+        # --- Vulnerability Scanning ---
+        await emit({"type": "progress", "message": "Looking up CVEs...", "percent": 85})
+        total_vulns = await scan_all_hosts_vulnerabilities([host], db, emit)
+        db.refresh(host)
+
         _complete(scan, db)
 
         await emit({
             "type": "completed",
-            "message": f"Scan complete. {host.open_ports_count} open port(s) found.",
-            "data": {"hosts_count": 1, "host": host.to_dict()},
+            "message": f"Scan complete. {host.open_ports_count} open port(s), {total_vulns} CVE(s) found.",
+            "data": {"hosts_count": 1, "vuln_count": total_vulns, "host": host.to_dict()},
             "percent": 100,
         })
 
