@@ -12,6 +12,8 @@ from app.scanners.arp_scanner import arp_scan
 from app.scanners.port_scanner import port_scan
 from app.scanners.network_calculator import resolve_target
 from app.vulnerability_scanner.vulnerability_engine import scan_all_hosts_vulnerabilities
+from app.attack_graph.graph_builder import build_attack_graph
+from app.attack_graph.path_engine import generate_attack_paths
 
 executor = ThreadPoolExecutor(max_workers=4)
 
@@ -99,6 +101,26 @@ async def run_network_scan(scan_id: str, interface_name: str, db: Session, emit:
         db_hosts = db.query(Host).filter(Host.scan_id == scan_id).all()
         total_vulns = await scan_all_hosts_vulnerabilities(db_hosts, db, emit)
 
+        # --- Attack Graph Generation ---
+        await emit({"type": "progress", "message": "Building attack graph...", "percent": 96})
+        try:
+            ag = await loop.run_in_executor(executor, lambda: build_attack_graph(scan_id, db))
+            if ag:
+                paths = await loop.run_in_executor(executor, lambda: generate_attack_paths(ag, db))
+                await emit({
+                    "type": "attack_graph_generated",
+                    "message": f"Attack graph ready: {ag.node_count} nodes, {len(paths)} path(s), risk level {ag.network_risk_level}",
+                    "data": {
+                        "nodes": ag.node_count,
+                        "edges": ag.edge_count,
+                        "paths": len(paths),
+                        "risk_level": ag.network_risk_level,
+                    },
+                    "percent": 99,
+                })
+        except Exception as ag_exc:
+            await emit({"type": "progress", "message": f"Attack graph skipped: {ag_exc}", "percent": 99})
+
         _complete(scan, db)
 
         await emit({
@@ -153,6 +175,26 @@ async def run_domain_scan(scan_id: str, target: str, db: Session, emit: Emitter)
         await emit({"type": "progress", "message": "Looking up CVEs...", "percent": 85})
         total_vulns = await scan_all_hosts_vulnerabilities([host], db, emit)
         db.refresh(host)
+
+        # --- Attack Graph Generation ---
+        await emit({"type": "progress", "message": "Building attack graph...", "percent": 96})
+        try:
+            ag = await loop.run_in_executor(executor, lambda: build_attack_graph(scan_id, db))
+            if ag:
+                paths = await loop.run_in_executor(executor, lambda: generate_attack_paths(ag, db))
+                await emit({
+                    "type": "attack_graph_generated",
+                    "message": f"Attack graph ready: {ag.node_count} nodes, {len(paths)} path(s)",
+                    "data": {
+                        "nodes": ag.node_count,
+                        "edges": ag.edge_count,
+                        "paths": len(paths),
+                        "risk_level": ag.network_risk_level,
+                    },
+                    "percent": 99,
+                })
+        except Exception as ag_exc:
+            await emit({"type": "progress", "message": f"Attack graph skipped: {ag_exc}", "percent": 99})
 
         _complete(scan, db)
 

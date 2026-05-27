@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Network, Globe, Server, Lock, ArrowRight, Activity, Clock, AlertTriangle, ShieldAlert } from "lucide-react";
+import { Network, Globe, Server, Lock, ArrowRight, Activity, Clock, AlertTriangle, ShieldAlert, Crosshair, Route } from "lucide-react";
 import { resultsApi } from "../services/api";
 import API from "../services/api";
 import { StatusBadge } from "../components/ui/Badge";
@@ -89,6 +89,22 @@ export default function Dashboard() {
           desc="Scan a specific domain, hostname, or IP address"
           badge="Port scan"
           color="purple"
+        />
+        <ActionCard
+          to="/attack-graph"
+          icon={Crosshair}
+          title="Attack Graph"
+          desc="Visualize attack paths and lateral movement possibilities"
+          badge="Dynamic analysis"
+          color="red"
+        />
+        <ActionCard
+          to="/attack-paths"
+          icon={Route}
+          title="Attack Paths"
+          desc="Browse ranked attack chains with CVE correlation"
+          badge="Risk scoring"
+          color="orange"
         />
       </div>
 
@@ -179,8 +195,10 @@ function StatCard({ icon: Icon, label, value, color, pulse = false }) {
 
 function ActionCard({ to, icon: Icon, title, desc, badge, color }) {
   const colorMap = {
-    blue: "bg-blue-600 text-blue-50 hover:bg-blue-700",
+    blue:   "bg-blue-600 text-blue-50 hover:bg-blue-700",
     purple: "bg-purple-600 text-purple-50 hover:bg-purple-700",
+    red:    "bg-red-700 text-red-50 hover:bg-red-800",
+    orange: "bg-orange-600 text-orange-50 hover:bg-orange-700",
   };
 
   return (

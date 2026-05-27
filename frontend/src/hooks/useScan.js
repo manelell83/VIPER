@@ -12,6 +12,7 @@ const initialState = {
   error: null,
   vulnCount: 0,
   vulnScanActive: false,
+  attackGraph: null,  // { nodes, edges, paths, risk_level } when ready
 };
 
 export function useScan() {
@@ -80,12 +81,21 @@ export function useScan() {
             _updateState({ vulnScanActive: false, message: data.message });
             break;
 
+          case "attack_graph_generated":
+            _updateState({
+              message: data.message,
+              progress: data.percent ?? state.progress,
+              attackGraph: data.data ?? null,
+            });
+            break;
+
           case "completed":
             _updateState({
               status: "completed",
               progress: 100,
               message: data.message,
               vulnScanActive: false,
+              attackGraph: state.attackGraph,
             });
             wsRef.current?.close();
             break;

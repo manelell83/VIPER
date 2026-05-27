@@ -1,7 +1,7 @@
 import { NavLink } from "react-router-dom";
 import {
   LayoutDashboard, Network, Globe, GitFork,
-  FileText, History, Shield, Sun, Moon, AlertTriangle,
+  FileText, History, Shield, Sun, Moon, AlertTriangle, Crosshair, Route,
 } from "lucide-react";
 import { useTheme } from "../../hooks/useTheme";
 
@@ -11,6 +11,8 @@ const NAV = [
   { to: "/scan/domain", icon: Globe, label: "Domain Scan" },
   { to: "/topology", icon: GitFork, label: "Topology" },
   { to: "/vulnerabilities", icon: AlertTriangle, label: "Vulnerabilities" },
+  { to: "/attack-graph", icon: Crosshair, label: "Attack Graph" },
+  { to: "/attack-paths", icon: Route, label: "Attack Paths" },
   { to: "/history", icon: History, label: "History" },
   { to: "/reports", icon: FileText, label: "Reports" },
 ];

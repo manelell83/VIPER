@@ -17,6 +17,9 @@ reportlab==4.2.5
 # Vulnerability scanning
 httpx==0.28.1
 
+# Attack graph
+networkx==3.4.2
+
 # Utilities
 python-dotenv==1.0.1
 ipaddress==1.0.23

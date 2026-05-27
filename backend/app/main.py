@@ -6,11 +6,13 @@ from app.core.config import settings
 from app.core.database import engine, Base
 from app.api.routes import interfaces, scan, topology, results, reports
 from app.api.routes import vulnerabilities
+from app.api.routes import attack_graph
 from app.api import websocket as ws
 
 # Import models so SQLAlchemy registers them before create_all()
 import app.models.scan  # noqa: F401
 import app.vulnerability_scanner.models  # noqa: F401
+import app.attack_graph.models  # noqa: F401
 
 
 @asynccontextmanager
@@ -40,6 +42,7 @@ app.include_router(topology.router, prefix="/topology", tags=["Topology"])
 app.include_router(results.router, prefix="/results", tags=["Results"])
 app.include_router(reports.router, prefix="/reports", tags=["Reports"])
 app.include_router(vulnerabilities.router, prefix="/vulnerabilities", tags=["Vulnerabilities"])
+app.include_router(attack_graph.router, prefix="/attack-graph", tags=["Attack Graph"])
 app.include_router(ws.router, tags=["WebSocket"])
 
 
