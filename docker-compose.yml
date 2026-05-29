@@ -7,13 +7,14 @@ services:
       dockerfile: ../docker/Dockerfile.backend
     container_name: viperv2-backend
     ports:
-      - "8000:8000"
+      - "8001:8001"
     volumes:
-      - ./backend:/app
       - viperv2-db:/app/data
     environment:
       - DATABASE_URL=sqlite:////app/data/viperv2.db
-    # Required for ARP scanning and raw sockets
+      - NVD_API_KEY=${NVD_API_KEY:-}
+      - DEBUG=false
+    # Required for ARP scanning and raw sockets on Linux
     network_mode: host
     cap_add:
       - NET_ADMIN

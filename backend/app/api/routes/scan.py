@@ -74,15 +74,22 @@ async def start_domain_scan(
     db: Session = Depends(get_db),
 ):
     """Start a domain/IP port scan."""
-    if not body.target.strip():
+    target = body.target.strip()
+    if not target:
         raise HTTPException(status_code=422, detail="Target cannot be empty")
+    if len(target) > 253:
+        raise HTTPException(status_code=422, detail="Target too long")
+    # Reject obviously invalid characters to prevent injection
+    forbidden = {";", "&", "|", "`", "$", "(", ")", "\n", "\r"}
+    if any(c in target for c in forbidden):
+        raise HTTPException(status_code=422, detail="Invalid characters in target")
 
     scan_id = str(uuid4())
-    scan = ScanSession(id=scan_id, type="domain", target=body.target.strip())
+    scan = ScanSession(id=scan_id, type="domain", target=target)
     db.add(scan)
     db.commit()
 
-    background_tasks.add_task(_background_domain_scan, scan_id, body.target.strip())
+    background_tasks.add_task(_background_domain_scan, scan_id, target)
 
     return {"scan_id": scan_id, "message": "Domain scan started", "websocket": f"/ws/{scan_id}"}
 

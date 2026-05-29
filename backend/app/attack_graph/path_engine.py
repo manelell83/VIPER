@@ -12,12 +12,13 @@ import networkx as nx
 from sqlalchemy.orm import Session
 
 from app.attack_graph.models import AttackGraph, AttackNode, AttackEdge, AttackPath
+from app.core.config import settings
 
 log = logging.getLogger(__name__)
 
 ATTACKER_NODE_ID = "ATTACKER"
-MAX_PATHS = 30
-MAX_HOPS = 6
+MAX_PATHS = settings.MAX_ATTACK_PATHS
+MAX_HOPS  = settings.MAX_ATTACK_HOPS
 
 
 def generate_attack_paths(ag: AttackGraph, db: Session) -> list:

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { API } from "../services/api";
+import API from "../services/api";
 import ExploitabilityBadge from "../components/exploitability/ExploitabilityBadge";
 import RemediationCard from "../components/exploitability/RemediationCard";
 import { FileText, Download, RefreshCw, ShieldCheck, AlertTriangle, Crosshair, Route } from "lucide-react";

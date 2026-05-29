@@ -14,26 +14,33 @@ export default function Topology() {
   const [elements, setElements] = useState(null);
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
   const [selectedNode, setSelectedNode] = useState(null);
 
   useEffect(() => {
-    resultsApi.list().then((res) => {
-      const completed = res.scans.filter((s) => s.status === "completed");
-      setScans(completed);
-      if (!selectedScan && completed.length > 0) setSelectedScan(completed[0].id);
-    });
+    resultsApi.list()
+      .then((res) => {
+        const completed = (res.scans || []).filter((s) => s.status === "completed");
+        setScans(completed);
+        if (!selectedScan && completed.length > 0) setSelectedScan(completed[0].id);
+      })
+      .catch(() => {});
   }, []);
 
-  useEffect(() => {
-    if (!selectedScan) return;
+  const loadTopology = (scanId) => {
+    if (!scanId) return;
     setLoading(true);
-    topologyApi.get(selectedScan)
+    setError(null);
+    topologyApi.get(scanId)
       .then((res) => {
         setElements(res.elements);
         setStats(res.stats);
       })
+      .catch(() => setError("Failed to load topology. The scan may still be processing."))
       .finally(() => setLoading(false));
-  }, [selectedScan]);
+  };
+
+  useEffect(() => { loadTopology(selectedScan); }, [selectedScan]);
 
   return (
     <div className="h-[calc(100vh-3rem)] flex flex-col gap-4 animate-fadeIn">
@@ -65,10 +72,11 @@ export default function Topology() {
           </select>
           <button
             className="btn-icon"
-            onClick={() => selectedScan && setSelectedScan((v) => v)}
+            onClick={() => loadTopology(selectedScan)}
             title="Refresh"
+            disabled={loading}
           >
-            <RefreshCw size={15} />
+            <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
           </button>
         </div>
       </div>
@@ -79,6 +87,19 @@ export default function Topology() {
           <div className="h-full rounded-xl flex items-center justify-center"
             style={{ border: "1px solid var(--color-border)", background: "var(--color-topology-bg)" }}>
             <LoadingOverlay message="Building topology..." />
+          </div>
+        ) : error ? (
+          <div className="h-full rounded-xl flex flex-col items-center justify-center gap-3"
+            style={{ border: "1px solid var(--color-border)", background: "var(--color-topology-bg)" }}>
+            <p className="text-orange-400 text-sm">{error}</p>
+            <button className="btn-secondary text-xs" onClick={() => loadTopology(selectedScan)}>
+              <RefreshCw size={13} /> Retry
+            </button>
+          </div>
+        ) : !selectedScan ? (
+          <div className="h-full rounded-xl flex items-center justify-center text-muted text-sm"
+            style={{ border: "1px solid var(--color-border)", background: "var(--color-topology-bg)" }}>
+            Select a completed scan to view the topology.
           </div>
         ) : (
           <TopologyViewer elements={elements} onNodeClick={setSelectedNode} />
