@@ -1,24 +1,35 @@
+import asyncio
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 from app.core.config import settings
 from app.core.database import engine, Base
+from app.core.state import set_main_loop
 from app.api.routes import interfaces, scan, topology, results, reports
 from app.api.routes import vulnerabilities
 from app.api.routes import attack_graph
 from app.api.routes import exploitability
+from app.api.routes import domain_recon
+from app.api.routes import ai_prioritization
+from app.api.routes import attack_validation
+from app.api.routes import auth
 from app.api import websocket as ws
 
-# Import models so SQLAlchemy registers them before create_all()
-import app.models.scan  # noqa: F401
-import app.vulnerability_scanner.models  # noqa: F401
-import app.attack_graph.models  # noqa: F401
-import app.exploitability.models  # noqa: F401
+# Register all models with SQLAlchemy before create_all()
+import app.models.scan                    # noqa: F401
+import app.models.user                    # noqa: F401
+import app.vulnerability_scanner.models   # noqa: F401
+import app.attack_graph.models            # noqa: F401
+import app.exploitability.models          # noqa: F401
+import app.attack_validation.models       # noqa: F401
+import app.dast.models                     # noqa: F401
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Capture the main uvicorn event loop so background threads can emit WS events
+    set_main_loop(asyncio.get_running_loop())
     Base.metadata.create_all(bind=engine)
     yield
 
@@ -38,24 +49,24 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(interfaces.router, prefix="/interfaces", tags=["Interfaces"])
-app.include_router(scan.router, prefix="/scan", tags=["Scan"])
-app.include_router(topology.router, prefix="/topology", tags=["Topology"])
-app.include_router(results.router, prefix="/results", tags=["Results"])
-app.include_router(reports.router, prefix="/reports", tags=["Reports"])
-app.include_router(vulnerabilities.router, prefix="/vulnerabilities", tags=["Vulnerabilities"])
-app.include_router(attack_graph.router, prefix="/attack-graph", tags=["Attack Graph"])
-app.include_router(exploitability.router, prefix="/exploitability", tags=["Exploitability"])
-app.include_router(ws.router, tags=["WebSocket"])
+app.include_router(auth.router,                   tags=["Auth"])
+app.include_router(interfaces.router,         prefix="/interfaces",          tags=["Interfaces"])
+app.include_router(scan.router,               prefix="/scan",                tags=["Scan"])
+app.include_router(topology.router,           prefix="/topology",            tags=["Topology"])
+app.include_router(results.router,            prefix="/results",             tags=["Results"])
+app.include_router(reports.router,            prefix="/reports",             tags=["Reports"])
+app.include_router(vulnerabilities.router,    prefix="/vulnerabilities",     tags=["Vulnerabilities"])
+app.include_router(attack_graph.router,       prefix="/attack-graph",        tags=["Attack Graph"])
+app.include_router(exploitability.router,     prefix="/exploitability",      tags=["Exploitability"])
+app.include_router(domain_recon.router,       prefix="/domain-recon",        tags=["Domain Recon"])
+app.include_router(ai_prioritization.router,  prefix="/ai",                  tags=["AI Prioritization"])
+app.include_router(attack_validation.router,  prefix="/attack-validation",   tags=["Attack Validation"])
+app.include_router(ws.router,                 tags=["WebSocket"])
 
 
 @app.get("/")
 async def root():
-    return {
-        "app": settings.APP_NAME,
-        "version": settings.VERSION,
-        "docs": "/docs",
-    }
+    return {"app": settings.APP_NAME, "version": settings.VERSION, "docs": "/docs"}
 
 
 @app.get("/health")

@@ -1,6 +1,25 @@
 version: "3.9"
 
 services:
+  # PostgreSQL Database (optional for production)
+  postgres:
+    image: postgres:16-alpine
+    container_name: viperv2-postgres
+    environment:
+      POSTGRES_DB: viperv2
+      POSTGRES_USER: viperv2_user
+      POSTGRES_PASSWORD: ${PGPASSWORD:-secure_password_here}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U viperv2_user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
   backend:
     build:
       context: ./backend
@@ -11,9 +30,13 @@ services:
     volumes:
       - viperv2-db:/app/data
     environment:
-      - DATABASE_URL=sqlite:////app/data/viperv2.db
+      - DATABASE_URL=${DATABASE_URL:-sqlite:////app/data/viperv2.db}
+      - JWT_SECRET=${JWT_SECRET:-dev-secret-key}
       - NVD_API_KEY=${NVD_API_KEY:-}
       - DEBUG=false
+    depends_on:
+      postgres:
+        condition: service_healthy
     # Required for ARP scanning and raw sockets on Linux
     network_mode: host
     cap_add:
@@ -34,3 +57,4 @@ services:
 
 volumes:
   viperv2-db:
+  postgres_data:

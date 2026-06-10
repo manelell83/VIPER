@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 from pydantic_settings import BaseSettings
 from pydantic import Field
@@ -12,7 +13,20 @@ class Settings(BaseSettings):
     VERSION: str = "2.0.0"
     DEBUG: bool = Field(default=False)
 
-    DATABASE_URL: str = f"sqlite:///{_BASE_DIR / 'viperv2.db'}"
+    # Database: PostgreSQL in production, SQLite in development
+    DATABASE_URL: str = os.getenv(
+        "DATABASE_URL",
+        f"sqlite:///{_BASE_DIR / 'viperv2.db'}"
+    )
+
+    # Security
+    JWT_SECRET: str = os.getenv("JWT_SECRET", "dev-secret-key-change-in-production")
+    JWT_ALGORITHM: str = "HS256"
+    JWT_EXPIRATION_HOURS: int = 24
+
+    # Rate limiting
+    RATE_LIMIT_ENABLED: bool = True
+    RATE_LIMIT_PER_MINUTE: int = 100
 
     CORS_ORIGINS: List[str] = [
         "http://localhost:5173",
