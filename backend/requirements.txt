@@ -11,6 +11,9 @@ psutil==6.1.0
 scapy==2.6.0
 python-nmap==0.7.1
 
+# DNS enumeration (domain recon)
+dnspython==2.7.0
+
 # Reports
 reportlab==4.2.5
 
@@ -20,6 +23,18 @@ httpx==0.28.1
 # Attack graph
 networkx==3.4.2
 
+# AI prioritization (optional — falls back to linear model if not installed)
+scikit-learn>=1.4.0
+numpy>=1.26.0
+
 # Utilities
 python-dotenv==1.0.1
 ipaddress==1.0.23
+
+# Testing & Quality
+pytest==7.4.3
+pytest-asyncio==0.24.0
+pytest-cov==4.1.0
+httpx==0.28.1
+factory-boy==3.3.0
+pytest-mock==3.12.0
