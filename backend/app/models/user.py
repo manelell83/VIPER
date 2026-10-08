@@ -6,6 +6,13 @@ from uuid import uuid4
 
 from app.core.database import Base
 
+# Roles (RBAC):
+#   admin   — everything an analyst can do + create users and delete scans
+#   analyst — run scans and read all results
+ROLE_ADMIN = "admin"
+ROLE_ANALYST = "analyst"
+ROLES = (ROLE_ADMIN, ROLE_ANALYST)
+
 
 class User(Base):
     __tablename__ = "users"
@@ -14,7 +21,7 @@ class User(Base):
     username = Column(String, unique=True, nullable=False, index=True)
     email = Column(String, unique=True, nullable=False, index=True)
     hashed_password = Column(String, nullable=False)
-    role = Column(String, default="operator")  # admin, analyst, operator
+    role = Column(String, nullable=False, default=ROLE_ANALYST)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     last_login = Column(DateTime, nullable=True)

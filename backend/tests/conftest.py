@@ -2,8 +2,11 @@
 Pytest configuration and shared fixtures.
 
 Fixtures:
-  - test_db: fresh in-memory SQLite database for each test
-  - client:  FastAPI TestClient whose get_db dependency uses test_db
+  - test_db:      fresh in-memory SQLite database for each test
+  - client:       TestClient authenticated as an "analyst" user
+  - admin_client: TestClient authenticated as an "admin" user
+  - anon_client:  TestClient without any token
+All clients use test_db through the get_db dependency override.
 """
 
 import os
@@ -20,6 +23,12 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.core.database import Base, get_db
+from app.core.security import create_access_token, hash_password
+from app.models.user import User
+
+TEST_PASSWORD = "correct-horse-battery"
+# bcrypt is deliberately slow (~0.25 s); hash once and reuse for every test user
+TEST_PASSWORD_HASH = hash_password(TEST_PASSWORD)
 
 
 @pytest.fixture(scope="function")
@@ -54,15 +63,51 @@ def test_db() -> Session:
     engine.dispose()
 
 
+def create_user(db: Session, username: str, role: str, is_active: bool = True) -> User:
+    user = User(username=username, email=f"{username}@example.com",
+                hashed_password=TEST_PASSWORD_HASH, role=role, is_active=is_active)
+    db.add(user)
+    db.commit()
+    return user
+
+
 @pytest.fixture(scope="function")
-def client(test_db: Session):
-    """FastAPI TestClient that uses the per-test database."""
+def make_client(test_db: Session):
+    """Factory: make_client(role) returns a TestClient using test_db,
+    with a valid bearer token for a user of that role (no token if role is None)."""
     def override_get_db():
         yield test_db
 
     app.dependency_overrides[get_db] = override_get_db
+    opened = []
 
-    with TestClient(app) as test_client:
-        yield test_client
+    def _make(role: str | None):
+        test_client = TestClient(app)
+        test_client.__enter__()          # runs the app's startup (lifespan)
+        opened.append(test_client)
+        if role is not None:
+            user = (test_db.query(User).filter(User.username == f"{role}-user").first()
+                    or create_user(test_db, f"{role}-user", role))
+            test_client.headers["Authorization"] = f"Bearer {create_access_token(user.id)}"
+        return test_client
 
+    yield _make
+
+    for test_client in opened:
+        test_client.__exit__(None, None, None)
     app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def client(make_client):
+    return make_client("analyst")
+
+
+@pytest.fixture
+def admin_client(make_client):
+    return make_client("admin")
+
+
+@pytest.fixture
+def anon_client(make_client):
+    return make_client(None)
