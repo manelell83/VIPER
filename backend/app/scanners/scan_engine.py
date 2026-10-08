@@ -23,7 +23,7 @@ Emitter = Callable[[dict], Awaitable[None]]
 
 async def run_network_scan(scan_id: str, interface_name: str, db: Session, emit: Emitter):
     """Discover all hosts on a LAN by selecting an interface. Subnet is auto-calculated."""
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
 
     scan = db.query(ScanSession).filter(ScanSession.id == scan_id).first()
     if not scan:
@@ -144,7 +144,7 @@ async def run_network_scan(scan_id: str, interface_name: str, db: Session, emit:
 
 async def run_domain_scan(scan_id: str, target: str, db: Session, emit: Emitter):
     """Resolve a domain/IP and run a port scan against it."""
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
 
     scan = db.query(ScanSession).filter(ScanSession.id == scan_id).first()
     if not scan:

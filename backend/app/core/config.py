@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     VERSION: str = "2.0.0"
     DEBUG: bool = Field(default=False)
 
-    # Database: PostgreSQL in production, SQLite in development
+    # Database (SQLite)
     DATABASE_URL: str = os.getenv(
         "DATABASE_URL",
         f"sqlite:///{_BASE_DIR / 'viperv2.db'}"

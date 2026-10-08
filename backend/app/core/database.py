@@ -1,8 +1,9 @@
 from sqlalchemy import create_engine
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import declarative_base, sessionmaker
 from app.core.config import settings
 
+# SQLite only. check_same_thread=False is required because FastAPI serves
+# requests from a thread pool, so a connection may be used by another thread.
 engine = create_engine(
     settings.DATABASE_URL,
     connect_args={"check_same_thread": False},

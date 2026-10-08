@@ -1,4 +1,3 @@
-import asyncio
 from uuid import uuid4
 from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException
 from pydantic import BaseModel
@@ -24,28 +23,23 @@ async def _emit(scan_id: str, data: dict):
     await manager.emit(scan_id, data)
 
 
-def _background_network_scan(scan_id: str, interface: str):
+# Background tasks are async so FastAPI runs them on the main event loop —
+# the same loop that owns the WebSocket connections, so emit() is safe.
+# Blocking work (ARP, nmap, graph building) is offloaded to a thread pool
+# inside scan_engine via run_in_executor.
+
+async def _background_network_scan(scan_id: str, interface: str):
     db = SessionLocal()
     try:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        loop.run_until_complete(
-            run_network_scan(scan_id, interface, db, lambda d: _emit(scan_id, d))
-        )
-        loop.close()
+        await run_network_scan(scan_id, interface, db, lambda d: _emit(scan_id, d))
     finally:
         db.close()
 
 
-def _background_domain_scan(scan_id: str, target: str):
+async def _background_domain_scan(scan_id: str, target: str):
     db = SessionLocal()
     try:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        loop.run_until_complete(
-            run_domain_scan(scan_id, target, db, lambda d: _emit(scan_id, d))
-        )
-        loop.close()
+        await run_domain_scan(scan_id, target, db, lambda d: _emit(scan_id, d))
     finally:
         db.close()
 

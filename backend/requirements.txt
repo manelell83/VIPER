@@ -1,50 +1,28 @@
+# Runtime dependencies (test tools are in requirements-dev.txt)
+
+# Web API
 fastapi==0.115.5
 uvicorn[standard]==0.32.1
-websockets==14.1
 pydantic==2.10.3
 pydantic-settings==2.6.1
+
+# Database (SQLite via SQLAlchemy ORM)
 sqlalchemy==2.0.36
-python-multipart==0.0.18
 
 # Network scanning
 psutil==6.1.0
 scapy==2.6.0
 python-nmap==0.7.1
 
-# DNS enumeration (domain recon)
-dnspython==2.7.0
-
-# Reports
-reportlab==4.2.5
-
-# Vulnerability scanning
+# CVE lookup (NVD API)
 httpx==0.28.1
 
 # Attack graph
 networkx==3.4.2
 
-# AI prioritization (optional — falls back to linear model if not installed)
-scikit-learn>=1.4.0
-numpy>=1.26.0
+# PDF reports
+reportlab==4.2.5
 
-# Utilities
-python-dotenv==1.0.1
-ipaddress==1.0.23
-
-# Database - PostgreSQL support
-psycopg2-binary==2.9.9
-alembic==1.13.1
-
-# Testing & Quality
-pytest==7.4.3
-pytest-asyncio==0.24.0
-pytest-cov==4.1.0
-httpx==0.28.1
-factory-boy==3.3.0
-pytest-mock==3.12.0
-
-# Security & Performance
+# Authentication
 python-jose[cryptography]==3.3.0
-passlib[bcrypt]==1.7.4
-slowapi==0.1.9
-python-multipart==0.0.18
+bcrypt==4.2.1

@@ -1,6 +1,6 @@
 """JWT and password security utilities."""
 
-from passlib.context import CryptContext
+import bcrypt
 from jose import JWTError, jwt
 from datetime import datetime, timedelta
 from typing import Optional
@@ -8,18 +8,23 @@ from fastapi import HTTPException, status
 
 from app.core.config import settings
 
-# Password hashing
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
 
 def hash_password(password: str) -> str:
-    """Hash a password using bcrypt."""
-    return pwd_context.hash(password)
+    """Hash a password using bcrypt (random salt, cost factor 12).
+
+    bcrypt only uses the first 72 bytes of input; bcrypt>=5 raises ValueError
+    for longer inputs, so callers must validate the length first.
+    """
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    """Verify a password against its hash."""
-    return pwd_context.verify(plain, hashed)
+    """Verify a password against its bcrypt hash (constant-time comparison)."""
+    try:
+        return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
+    except ValueError:
+        # Malformed hash or over-long password: treat as a failed login
+        return False
 
 
 def create_access_token(user_id: str, expires_delta: Optional[timedelta] = None) -> str:
