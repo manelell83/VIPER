@@ -45,3 +45,9 @@ logs/
 
 # Docker volumes
 viperv2-db/
+
+# Test / coverage output
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
