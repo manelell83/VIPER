@@ -10,11 +10,12 @@ services:
       - "8001:8001"
     volumes:
       - viperv2-db:/app/data
+    # Secrets (JWT_SECRET, NVD_API_KEY) come from backend/.env — see backend/.env.example.
+    # There is deliberately no fallback secret: the backend refuses to start without one.
+    env_file:
+      - ./backend/.env
     environment:
-      - DATABASE_URL=${DATABASE_URL:-sqlite:////app/data/viperv2.db}
-      - JWT_SECRET=${JWT_SECRET:-dev-secret-key}
-      - NVD_API_KEY=${NVD_API_KEY:-}
-      - DEBUG=false
+      - DATABASE_URL=sqlite:////app/data/viperv2.db
     # Required for ARP scanning and raw sockets on Linux
     network_mode: host
     cap_add:

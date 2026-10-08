@@ -8,6 +8,10 @@ from fastapi import HTTPException, status
 
 from app.core.config import settings
 
+# Fixed in code (not configurable) so a misconfiguration cannot weaken it.
+# Decoding only accepts this algorithm, which also rejects "alg": "none" tokens.
+JWT_ALGORITHM = "HS256"
+
 
 def hash_password(password: str) -> str:
     """Hash a password using bcrypt (random salt, cost factor 12).
@@ -38,7 +42,7 @@ def create_access_token(user_id: str, expires_delta: Optional[timedelta] = None)
     encoded_jwt = jwt.encode(
         to_encode,
         settings.JWT_SECRET,
-        algorithm=settings.JWT_ALGORITHM
+        algorithm=JWT_ALGORITHM
     )
     return encoded_jwt
 
@@ -54,7 +58,7 @@ def verify_token(token: str) -> str:
         payload = jwt.decode(
             token,
             settings.JWT_SECRET,
-            algorithms=[settings.JWT_ALGORITHM]
+            algorithms=[JWT_ALGORITHM]
         )
         user_id: str = payload.get("sub")
         if user_id is None:

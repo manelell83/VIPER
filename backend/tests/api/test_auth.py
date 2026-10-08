@@ -137,7 +137,7 @@ class TestTokenValidation:
     def test_token_contains_only_user_id_and_expiry(self, test_db):
         user = create_user(test_db, "alice", "analyst")
         claims = jwt.decode(create_access_token(user.id), settings.JWT_SECRET,
-                            algorithms=[settings.JWT_ALGORITHM])
+                            algorithms=["HS256"])
 
         assert set(claims) == {"sub", "exp"}
 

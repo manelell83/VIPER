@@ -11,9 +11,10 @@ All clients use test_db through the get_db dependency override.
 
 import os
 
-# Point the app at an in-memory database *before* importing it, so the
-# startup hook never creates a real viperv2.db file during tests.
+# Configure the app *before* importing it: an in-memory database (so the
+# startup hook never creates a real viperv2.db file) and a test-only JWT secret.
 os.environ["DATABASE_URL"] = "sqlite://"
+os.environ["JWT_SECRET"] = "test-only-secret-not-used-anywhere-else-0123456789"
 
 import pytest
 from sqlalchemy import create_engine, event
