@@ -53,20 +53,18 @@ export default function Reports() {
               </div>
 
               <div className="flex items-center gap-2 flex-shrink-0">
-                <a
-                  href={reportsApi.exportJson(scan.id)}
-                  download
+                <button
+                  onClick={() => reportsApi.downloadJson(scan.id).catch(() => {})}
                   className="btn-secondary text-xs py-1.5 px-3"
                 >
                   <Download size={13} /> JSON
-                </a>
-                <a
-                  href={reportsApi.exportPdf(scan.id)}
-                  download
+                </button>
+                <button
+                  onClick={() => reportsApi.downloadPdf(scan.id).catch(() => {})}
                   className="btn-secondary text-xs py-1.5 px-3"
                 >
                   <Download size={13} /> PDF
-                </a>
+                </button>
               </div>
             </div>
           ))}

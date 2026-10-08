@@ -84,14 +84,13 @@ export function HistoryList() {
                           <Eye size={14} />
                         </Link>
                         {scan.status === "completed" && (
-                          <a
-                            href={reportsApi.exportJson(scan.id)}
-                            download
+                          <button
+                            onClick={() => reportsApi.downloadJson(scan.id).catch(() => {})}
                             className="btn-icon"
                             title="Download JSON"
                           >
                             <Download size={14} />
-                          </a>
+                          </button>
                         )}
                         <button className="btn-icon" title="Delete" onClick={() => remove(scan.id)}>
                           <Trash2 size={14} className="text-danger" />
@@ -139,12 +138,12 @@ export function ScanDetail() {
           <StatusBadge status={scan.status} />
           {scan.status === "completed" && (
             <>
-              <a href={reportsApi.exportJson(scan.id)} download className="btn-secondary text-xs py-1.5">
+              <button onClick={() => reportsApi.downloadJson(scan.id).catch(() => {})} className="btn-secondary text-xs py-1.5">
                 <Download size={13} /> JSON
-              </a>
-              <a href={reportsApi.exportPdf(scan.id)} download className="btn-secondary text-xs py-1.5">
+              </button>
+              <button onClick={() => reportsApi.downloadPdf(scan.id).catch(() => {})} className="btn-secondary text-xs py-1.5">
                 <Download size={13} /> PDF
-              </a>
+              </button>
               <Link to={`/topology?scan=${scan.id}`} className="btn-info text-xs py-1.5">
                 View Topology
               </Link>

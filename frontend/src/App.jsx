@@ -11,12 +11,21 @@ import AttackGraph from "./pages/AttackGraph";
 import AttackPaths from "./pages/AttackPaths";
 import Exploitability from "./pages/Exploitability";
 import SecurityReport from "./pages/SecurityReport";
+import Login from "./pages/Login";
+import { getToken } from "./services/auth";
+
+// Redirects to /login when there is no token. The real check is on the
+// backend (every API route returns 401 without a valid token).
+function RequireAuth({ children }) {
+  return getToken() ? children : <Navigate to="/login" replace />;
+}
 
 export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route element={<AppShell />}>
+        <Route path="login" element={<Login />} />
+        <Route element={<RequireAuth><AppShell /></RequireAuth>}>
           <Route index element={<Dashboard />} />
           <Route path="scan/network" element={<NetworkScan />} />
           <Route path="scan/domain" element={<DomainScan />} />

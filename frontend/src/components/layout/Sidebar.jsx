@@ -2,9 +2,10 @@ import { NavLink } from "react-router-dom";
 import {
   LayoutDashboard, Network, Globe, GitFork,
   FileText, History, Shield, Sun, Moon, AlertTriangle, Crosshair, Route,
-  ShieldAlert, ClipboardList,
+  ShieldAlert, ClipboardList, LogOut,
 } from "lucide-react";
 import { useTheme } from "../../hooks/useTheme";
+import { getUser, clearSession } from "../../services/auth";
 
 const NAV = [
   { to: "/", icon: LayoutDashboard, label: "Dashboard" },
@@ -22,6 +23,12 @@ const NAV = [
 
 export default function Sidebar() {
   const { dark, toggle } = useTheme();
+  const user = getUser();
+
+  const logout = () => {
+    clearSession();
+    window.location.assign("/login");
+  };
 
   return (
     <aside className="sidebar">
@@ -64,6 +71,10 @@ export default function Sidebar() {
         >
           {dark ? <Sun size={16} /> : <Moon size={16} />}
           <span>{dark ? "Light Mode" : "Dark Mode"}</span>
+        </button>
+        <button onClick={logout} className="nav-item w-full" title="Sign out">
+          <LogOut size={16} />
+          <span>Sign out{user ? ` (${user.username})` : ""}</span>
         </button>
         <p className="text-xs text-muted mt-3 px-1">v2.0.0 · PFA 2026</p>
       </div>

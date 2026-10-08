@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import API from "../services/api";
+import API, { reportsApi } from "../services/api";
 import ExploitabilityBadge from "../components/exploitability/ExploitabilityBadge";
 import RemediationCard from "../components/exploitability/RemediationCard";
 import { FileText, Download, RefreshCw, ShieldCheck, AlertTriangle, Crosshair, Route } from "lucide-react";
@@ -65,14 +65,7 @@ export default function SecurityReport() {
     if (!scanId) return;
     setExporting(true);
     try {
-      const resp = await fetch(`/api/reports/export/${scanId}/pdf`);
-      const blob = await resp.blob();
-      const url  = URL.createObjectURL(blob);
-      const a    = document.createElement("a");
-      a.href     = url;
-      a.download = `viperv2_report_${scanId.slice(0, 8)}.pdf`;
-      a.click();
-      URL.revokeObjectURL(url);
+      await reportsApi.downloadPdf(scanId);
     } catch (_) {} finally {
       setExporting(false);
     }
@@ -80,14 +73,7 @@ export default function SecurityReport() {
 
   const handleExportJSON = async () => {
     if (!scanId) return;
-    const resp = await fetch(`/api/reports/export/${scanId}/json`);
-    const blob = await resp.blob();
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement("a");
-    a.href     = url;
-    a.download = `viperv2_scan_${scanId.slice(0, 8)}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+    await reportsApi.downloadJson(scanId).catch(() => {});
   };
 
   return (
