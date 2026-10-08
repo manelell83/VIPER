@@ -15,7 +15,7 @@ async def list_vulnerabilities(
     scan_id: Optional[str] = Query(None),
     severity: Optional[str] = Query(None),
     host_id: Optional[str] = Query(None),
-    limit: int = Query(200, le=500),
+    limit: int = Query(200, ge=1, le=500),
     db: Session = Depends(get_db),
 ):
     """Return all vulnerabilities, optionally filtered by scan/severity/host."""
@@ -91,7 +91,7 @@ async def get_risk_summary(scan_id: Optional[str] = Query(None), db: Session = D
 @router.get("/risk/top-hosts")
 async def get_top_risky_hosts(
     scan_id: Optional[str] = Query(None),
-    limit: int = Query(10, le=50),
+    limit: int = Query(10, ge=1, le=50),
     db: Session = Depends(get_db),
 ):
     """Return top N riskiest hosts."""

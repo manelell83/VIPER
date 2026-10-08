@@ -4,7 +4,9 @@ import ScanProgress from "../components/scan/ScanProgress";
 import ScanResults from "../components/scan/ScanResults";
 import { useScan } from "../hooks/useScan";
 
-const EXAMPLES = ["scanme.nmap.org", "google.com", "192.168.1.1"];
+// Only scan hosts you are authorised to test. scanme.nmap.org is provided by
+// the Nmap project for exactly this purpose.
+const EXAMPLES = ["scanme.nmap.org", "127.0.0.1"];
 
 export default function DomainScan() {
   const [target, setTarget] = useState("");

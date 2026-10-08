@@ -1,10 +1,12 @@
 from uuid import uuid4
 from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db, SessionLocal
 from app.models.scan import ScanSession
+from app.scanners.interface_detector import get_interface_by_name
+from app.scanners.network_calculator import is_valid_scan_target
 from app.scanners.scan_engine import run_network_scan, run_domain_scan
 from app.api.websocket import manager
 
@@ -12,11 +14,22 @@ router = APIRouter()
 
 
 class NetworkScanRequest(BaseModel):
-    interface: str
+    interface: str = Field(min_length=1, max_length=64)
 
 
 class DomainScanRequest(BaseModel):
-    target: str   # domain name or IP address
+    target: str = Field(max_length=253)   # IPv4 address or hostname
+
+    @field_validator("target")
+    @classmethod
+    def must_be_ip_or_hostname(cls, value: str) -> str:
+        # Allow-list validation: only an IPv4 address or an RFC 1123 hostname
+        # is accepted. This blocks nmap option injection such as
+        # "example.com -oN /path/file" (spaces and a leading "-" are impossible).
+        value = value.strip()
+        if not is_valid_scan_target(value):
+            raise ValueError("target must be an IPv4 address or a valid hostname")
+        return value
 
 
 async def _emit(scan_id: str, data: dict):
@@ -51,6 +64,10 @@ async def start_network_scan(
     db: Session = Depends(get_db),
 ):
     """Start a dynamic LAN scan on the selected interface."""
+    # Only interfaces that actually exist on this machine are accepted
+    if get_interface_by_name(body.interface) is None:
+        raise HTTPException(status_code=422, detail=f"Unknown network interface: {body.interface}")
+
     scan_id = str(uuid4())
     scan = ScanSession(id=scan_id, type="network", target="detecting...", interface=body.interface)
     db.add(scan)
@@ -67,16 +84,8 @@ async def start_domain_scan(
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
-    """Start a domain/IP port scan."""
-    target = body.target.strip()
-    if not target:
-        raise HTTPException(status_code=422, detail="Target cannot be empty")
-    if len(target) > 253:
-        raise HTTPException(status_code=422, detail="Target too long")
-    # Reject obviously invalid characters to prevent injection
-    forbidden = {";", "&", "|", "`", "$", "(", ")", "\n", "\r"}
-    if any(c in target for c in forbidden):
-        raise HTTPException(status_code=422, detail="Invalid characters in target")
+    """Start a port scan of an IPv4 address or hostname (validated by DomainScanRequest)."""
+    target = body.target
 
     scan_id = str(uuid4())
     scan = ScanSession(id=scan_id, type="domain", target=target)

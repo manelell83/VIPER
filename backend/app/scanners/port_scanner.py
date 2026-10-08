@@ -1,16 +1,25 @@
 import socket
 import concurrent.futures
-from typing import Dict, Any, List
+from typing import Dict, Any
+
+from app.scanners.network_calculator import is_ipv4
 
 
 def port_scan(ip: str, port_range: str = "1-1024") -> Dict[str, Any]:
     """
     Scan ports on the given IP using python-nmap.
     Falls back to a raw socket scan if nmap is unavailable.
+
+    `ip` must be a literal IPv4 address. python-nmap splits the host string on
+    whitespace and passes each piece to nmap, so anything else (e.g.
+    "x -oN /some/file") could inject nmap options. Callers resolve hostnames
+    first; this check is the last line of defence.
     """
+    if not is_ipv4(ip):
+        raise ValueError(f"Refusing to scan non-IPv4 target: {ip!r}")
     try:
         return _nmap_scan(ip, port_range)
-    except Exception as e:
+    except Exception:
         return _socket_scan(ip, port_range)
 
 

@@ -105,3 +105,15 @@ def test_falls_back_to_socket_scan_when_nmap_fails(monkeypatch):
     monkeypatch.setattr(port_scanner, "_socket_scan", lambda ip, pr: {"fallback": (ip, pr)})
 
     assert port_scanner.port_scan("10.0.0.5", "1-100") == {"fallback": ("10.0.0.5", "1-100")}
+
+
+@pytest.mark.parametrize("target", ["nothing.invalid -oN pwned.txt", "-iL /etc/passwd", "example.com"])
+def test_refuses_anything_but_a_literal_ipv4(monkeypatch, target):
+    """Last line of defence against nmap option injection: nmap is never
+    called with a hostname or free text, only with an IPv4 address."""
+    def must_not_run(*args):
+        raise AssertionError("nmap must not be called")
+    monkeypatch.setattr(port_scanner, "_nmap_scan", must_not_run)
+
+    with pytest.raises(ValueError):
+        port_scanner.port_scan(target)

@@ -1,5 +1,5 @@
 import asyncio
-import json
+import logging
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 from typing import Callable, Awaitable
@@ -16,7 +16,13 @@ from app.attack_graph.graph_builder import build_attack_graph
 from app.attack_graph.path_engine import generate_attack_paths
 from app.exploitability.exploitability_engine import run_exploitability_analysis
 
+log = logging.getLogger(__name__)
+
 executor = ThreadPoolExecutor(max_workers=4)
+
+# Sent to the client for unexpected errors. The details (stack trace, paths,
+# library messages) go to the server log only, never to the browser.
+INTERNAL_ERROR_MESSAGE = "Scan failed due to an internal error (see server logs)"
 
 Emitter = Callable[[dict], Awaitable[None]]
 
@@ -106,8 +112,9 @@ async def run_network_scan(scan_id: str, interface_name: str, db: Session, emit:
         await emit({"type": "progress", "message": "Analyzing exploitability...", "percent": 94})
         try:
             await run_exploitability_analysis(scan_id, db, emit)
-        except Exception as exp_exc:
-            await emit({"type": "progress", "message": f"Exploitability analysis skipped: {exp_exc}", "percent": 95})
+        except Exception:
+            log.exception("Exploitability analysis failed for scan %s", scan_id)
+            await emit({"type": "progress", "message": "Exploitability analysis skipped (internal error)", "percent": 95})
 
         # --- Attack Graph Generation ---
         await emit({"type": "progress", "message": "Building attack graph...", "percent": 96})
@@ -126,8 +133,9 @@ async def run_network_scan(scan_id: str, interface_name: str, db: Session, emit:
                     },
                     "percent": 99,
                 })
-        except Exception as ag_exc:
-            await emit({"type": "progress", "message": f"Attack graph skipped: {ag_exc}", "percent": 99})
+        except Exception:
+            log.exception("Attack graph generation failed for scan %s", scan_id)
+            await emit({"type": "progress", "message": "Attack graph skipped (internal error)", "percent": 99})
 
         _complete(scan, db)
 
@@ -138,8 +146,9 @@ async def run_network_scan(scan_id: str, interface_name: str, db: Session, emit:
             "percent": 100,
         })
 
-    except Exception as exc:
-        await _fail(scan, db, emit, str(exc))
+    except Exception:
+        log.exception("Scan %s failed", scan_id)
+        await _fail(scan, db, emit, INTERNAL_ERROR_MESSAGE)
 
 
 async def run_domain_scan(scan_id: str, target: str, db: Session, emit: Emitter):
@@ -158,7 +167,11 @@ async def run_domain_scan(scan_id: str, target: str, db: Session, emit: Emitter)
 
         # Resolve domain → IP
         await emit({"type": "progress", "message": f"Resolving {target}...", "percent": 10})
-        ip = await loop.run_in_executor(executor, lambda: resolve_target(target))
+        try:
+            ip = await loop.run_in_executor(executor, lambda: resolve_target(target))
+        except ValueError as exc:            # expected: name does not resolve
+            await _fail(scan, db, emit, str(exc))
+            return
 
         await emit({"type": "progress", "message": f"Resolved to {ip}. Scanning ports...", "percent": 20})
 
@@ -188,8 +201,9 @@ async def run_domain_scan(scan_id: str, target: str, db: Session, emit: Emitter)
         await emit({"type": "progress", "message": "Analyzing exploitability...", "percent": 93})
         try:
             await run_exploitability_analysis(scan_id, db, emit)
-        except Exception as exp_exc:
-            await emit({"type": "progress", "message": f"Exploitability analysis skipped: {exp_exc}", "percent": 95})
+        except Exception:
+            log.exception("Exploitability analysis failed for scan %s", scan_id)
+            await emit({"type": "progress", "message": "Exploitability analysis skipped (internal error)", "percent": 95})
 
         # --- Attack Graph Generation ---
         await emit({"type": "progress", "message": "Building attack graph...", "percent": 96})
@@ -208,8 +222,9 @@ async def run_domain_scan(scan_id: str, target: str, db: Session, emit: Emitter)
                     },
                     "percent": 99,
                 })
-        except Exception as ag_exc:
-            await emit({"type": "progress", "message": f"Attack graph skipped: {ag_exc}", "percent": 99})
+        except Exception:
+            log.exception("Attack graph generation failed for scan %s", scan_id)
+            await emit({"type": "progress", "message": "Attack graph skipped (internal error)", "percent": 99})
 
         _complete(scan, db)
 
@@ -220,8 +235,9 @@ async def run_domain_scan(scan_id: str, target: str, db: Session, emit: Emitter)
             "percent": 100,
         })
 
-    except Exception as exc:
-        await _fail(scan, db, emit, str(exc))
+    except Exception:
+        log.exception("Scan %s failed", scan_id)
+        await _fail(scan, db, emit, INTERNAL_ERROR_MESSAGE)
 
 
 def _complete(scan: ScanSession, db: Session):

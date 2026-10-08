@@ -27,6 +27,9 @@ def scheduled(monkeypatch):
 
     monkeypatch.setattr(scan_routes, "_background_network_scan", fake_network)
     monkeypatch.setattr(scan_routes, "_background_domain_scan", fake_domain)
+    # Pretend this machine has exactly one interface, "eth0"
+    monkeypatch.setattr(scan_routes, "get_interface_by_name",
+                        lambda name: {"name": "eth0"} if name == "eth0" else None)
     return calls
 
 
@@ -53,8 +56,21 @@ class TestStartNetworkScan:
         assert response.status_code == 422
         assert scheduled == []
 
+    def test_unknown_interface_is_rejected(self, client: TestClient, test_db: Session, scheduled):
+        response = client.post("/scan/network", json={"interface": "does-not-exist"})
+
+        assert response.status_code == 422
+        assert scheduled == []
+        assert test_db.query(ScanSession).count() == 0
+
 
 class TestStartDomainScan:
+
+    @pytest.mark.parametrize("target", [
+        "scanme.nmap.org", "127.0.0.1", "localhost", "my-host.lan.", "xn--bcher-kva.example",
+    ])
+    def test_ipv4_and_hostnames_are_accepted(self, client: TestClient, scheduled, target):
+        assert client.post("/scan/domain", json={"target": target}).status_code == 200
 
     def test_valid_target_is_accepted(self, client: TestClient, test_db: Session, scheduled):
         response = client.post("/scan/domain", json={"target": "  scanme.nmap.org  "})
@@ -80,16 +96,30 @@ class TestStartDomainScan:
         assert scheduled == []
 
     @pytest.mark.parametrize("target", [
+        # nmap option injection (python-nmap splits the host string on spaces)
+        "nothing.invalid -oN pwned.txt",
+        "-iL /etc/passwd",
+        "--script=http-shellshock example.com",
+        "example.com	-oX out.xml",
+        # shell metacharacters
         "example.com; rm -rf /",
         "example.com | id",
         "$(whoami).example.com",
         "`id`.example.com",
+        # malformed hostnames / unsupported targets
+        "-leading-hyphen.com",
+        "trailing-hyphen-.com",
+        "under_score.com",
+        "a" * 64 + ".com",          # label longer than 63 characters
+        "10.0.0.0/24",              # CIDR ranges are for the network scan
+        "::1",                      # IPv6 is not supported
     ])
-    def test_shell_metacharacters_are_rejected(self, client: TestClient, scheduled, target):
+    def test_invalid_targets_are_rejected(self, client: TestClient, test_db: Session, scheduled, target):
         response = client.post("/scan/domain", json={"target": target})
 
         assert response.status_code == 422
         assert scheduled == []
+        assert test_db.query(ScanSession).count() == 0
 
 
 class TestScanStatus:

@@ -1,6 +1,7 @@
 import io
 import json
 from datetime import datetime
+from xml.sax.saxutils import escape
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse, JSONResponse
 from sqlalchemy.orm import Session
@@ -666,11 +667,13 @@ def _generate_advanced_pdf(scan_id: str, scan: ScanSession, db: Session) -> byte
             elems.append(Spacer(1, 0.5 * cm))
             elems.append(_h3("Immediate Action Details"))
             for r in immediate_items:
-                elems.append(_body(f"<b>{r.title}</b> — {r.description or ''}"))
+                # title/description/steps contain scanned data (IPs, service
+                # banners): escape it so ReportLab does not parse it as markup
+                elems.append(_body(f"<b>{escape(r.title)}</b> — {escape(r.description or '')}"))
                 try:
                     steps = json.loads(r.steps_json or "[]")
                     for s in steps[:5]:
-                        elems.append(_body(f"  • {s}"))
+                        elems.append(_body(f"  • {escape(str(s))}"))
                 except Exception:
                     pass
                 elems.append(Spacer(1, 0.2 * cm))
