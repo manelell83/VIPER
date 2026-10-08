@@ -2,12 +2,12 @@
 Tests for authentication (JWT) and authorization (roles).
 """
 
+import re
 from datetime import timedelta
 
 import pytest
-from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
-from jose import jwt
+import jwt
 from starlette.websockets import WebSocketDisconnect
 
 from app.api.websocket import manager
@@ -22,15 +22,17 @@ PUBLIC_ROUTES = {"/", "/health", "/auth/login"}
 
 
 def _protected_routes():
-    """Every HTTP route of the app except the public ones and FastAPI's docs."""
-    for route in app.routes:
-        if isinstance(route, APIRoute) and route.path not in PUBLIC_ROUTES:
-            for method in route.methods:
-                # Fill path parameters such as {scan_id} with a dummy value
-                path = route.path
-                for name in route.param_convertors:
-                    path = path.replace("{" + name + "}", "x")
-                yield method, path
+    """Every HTTP route of the app except the public ones.
+
+    Routes are read from the OpenAPI schema (public API, the source of /docs)
+    rather than from app.routes, whose structure differs between FastAPI versions.
+    """
+    for path, operations in app.openapi()["paths"].items():
+        if path in PUBLIC_ROUTES:
+            continue
+        for method in operations:
+            # Fill path parameters such as {scan_id} with a dummy value
+            yield method.upper(), re.sub(r"\{[^}]+\}", "x", path)
 
 
 class TestEveryRouteRequiresAuth:
@@ -114,6 +116,12 @@ class TestTokenValidation:
         unsigned = f'{b64({"alg": "none", "typ": "JWT"})}.{b64({"sub": user.id})}.'
 
         assert self._get_me(anon_client, unsigned).status_code == 401
+
+    def test_token_without_expiry_is_rejected(self, anon_client, test_db):
+        user = create_user(test_db, "alice", "analyst")
+        no_exp = jwt.encode({"sub": user.id}, settings.JWT_SECRET, algorithm="HS256")
+
+        assert self._get_me(anon_client, no_exp).status_code == 401
 
     def test_garbage_token_is_rejected(self, anon_client):
         assert self._get_me(anon_client, "not-a-jwt").status_code == 401
