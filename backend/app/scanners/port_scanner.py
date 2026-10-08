@@ -26,17 +26,23 @@ def _nmap_scan(ip: str, port_range: str = "1-1024") -> Dict[str, Any]:
     except nmap.PortScannerError:
         nm.scan(ip, port_range, arguments=arguments)
 
+    if ip not in nm.all_hosts():
+        return {"ports": [], "os": None, "os_accuracy": None, "hostname": None}
+
+    return _parse_nmap_host(nm[ip])
+
+
+def _parse_nmap_host(host) -> Dict[str, Any]:
+    """Convert one python-nmap host result (PortScannerHostDict) into our format.
+
+    Kept separate from _nmap_scan so it can be unit-tested without running nmap.
+    """
     result: Dict[str, Any] = {
         "ports": [],
         "os": None,
         "os_accuracy": None,
         "hostname": None,
     }
-
-    if ip not in nm.all_hosts():
-        return result
-
-    host = nm[ip]
 
     # Hostname
     if host.hostname():
