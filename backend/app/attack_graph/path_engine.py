@@ -16,7 +16,6 @@ from app.core.config import settings
 
 log = logging.getLogger(__name__)
 
-ATTACKER_NODE_ID = "ATTACKER"
 MAX_PATHS = settings.MAX_ATTACK_PATHS
 MAX_HOPS  = settings.MAX_ATTACK_HOPS
 
@@ -46,22 +45,23 @@ def generate_attack_paths(ag: AttackGraph, db: Session) -> list:
         G.add_edge(edge.source_node_id, edge.target_node_id, weight=cost, score=edge.score, edge=edge)
         edge_map[(edge.source_node_id, edge.target_node_id)] = edge
 
-    if ATTACKER_NODE_ID not in G:
+    attacker = next((n for n in nodes if n.node_type == "ATTACKER"), None)
+    if attacker is None:
         db.commit()
         return []
 
-    # Target nodes: all non-attacker nodes reachable from ATTACKER
-    targets = [n for n in nodes if n.id != ATTACKER_NODE_ID]
+    # Target nodes: every host node (reachability is checked below)
+    targets = [n for n in nodes if n.id != attacker.id]
 
     paths_created: list[AttackPath] = []
     seen_paths: set[str] = set()
 
     for target in targets:
-        if not nx.has_path(G, ATTACKER_NODE_ID, target.id):
+        if not nx.has_path(G, attacker.id, target.id):
             continue
 
         try:
-            all_paths = list(nx.all_simple_paths(G, ATTACKER_NODE_ID, target.id, cutoff=MAX_HOPS))
+            all_paths = list(nx.all_simple_paths(G, attacker.id, target.id, cutoff=MAX_HOPS))
         except Exception:
             continue
 

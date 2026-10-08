@@ -18,9 +18,6 @@ from app.attack_graph.attack_rules import evaluate_host_rules
 
 log = logging.getLogger(__name__)
 
-ATTACKER_NODE_ID = "ATTACKER"
-
-
 def build_attack_graph(scan_id: str, db: Session) -> "AttackGraph | None":
     """
     Build (or rebuild) the attack graph for a completed scan.
@@ -45,8 +42,11 @@ def build_attack_graph(scan_id: str, db: Session) -> "AttackGraph | None":
     db.flush()
 
     # ── Virtual attacker node ────────────────────────────────────────────────
+    # Each graph gets its own attacker node with a unique id (the id is the
+    # table's primary key, so a fixed id would collide across scans).
+    # Other modules find it by node_type == "ATTACKER".
     attacker = AttackNode(
-        id=ATTACKER_NODE_ID,
+        id=str(uuid4()),
         graph_id=ag.id,
         host_id=None,
         node_type="ATTACKER",
@@ -129,7 +129,7 @@ def build_attack_graph(scan_id: str, db: Session) -> "AttackGraph | None":
             edge = AttackEdge(
                 id=str(uuid4()),
                 graph_id=ag.id,
-                source_node_id=ATTACKER_NODE_ID,
+                source_node_id=attacker.id,
                 target_node_id=target_node.id,
                 attack_type=rule.attack_type,
                 attack_vector=rule.attack_vector,
