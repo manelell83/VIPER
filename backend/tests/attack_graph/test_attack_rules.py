@@ -74,3 +74,26 @@ class TestPrivilegeEscalationRules:
 
     def test_medium_cve_triggers_no_privesc(self):
         assert evaluate_host_rules([], [], [_vuln("CVE-A", 6.9)]) == []
+
+
+class TestCveToPortLinking:
+    """A CVE is linked to a rule only if it affects one of the rule's ports
+    (exact port number) or one of its services."""
+
+    def test_cve_on_similar_port_number_is_not_linked(self):
+        # "22" is a substring of "2222/tcp" and "80" of "800/tcp" —
+        # these CVEs must not be attributed to the SSH / HTTP rules.
+        vulns = [
+            _vuln("CVE-ON-2222", 9.0, port="2222/tcp", service="Unknown"),
+            _vuln("CVE-ON-800", 9.0, port="800/tcp", service="Unknown"),
+        ]
+
+        matched = _matched(evaluate_host_rules([22, 80], ["ssh", "http"], vulns))
+
+        assert matched["ssh_remote"] == (65.0, [])
+        assert matched["http_web"][1] == []
+
+    def test_cve_on_exact_port_is_linked(self):
+        vulns = [_vuln("CVE-ON-22", 9.0, port="22/tcp", service="Unknown")]
+
+        assert _matched(evaluate_host_rules([22], [""], vulns))["ssh_remote"][1] == ["CVE-ON-22"]

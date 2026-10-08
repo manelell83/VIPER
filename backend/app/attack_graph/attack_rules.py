@@ -323,13 +323,12 @@ def evaluate_host_rules(
             matched = port_hit or svc_hit
 
             if matched and host_vulns:
+                # Link a CVE to this rule if it affects one of the rule's ports
+                # (exact number) or one of its service keywords.
                 matched_cves = [
                     v.cve_id for v in host_vulns
-                    if (v.affected_port and any(
-                        str(p) in (v.affected_port or "") for p in rule.ports
-                    )) or any(
-                        kw in (v.affected_service or "").lower() for kw in rule.services
-                    )
+                    if _port_number(v.affected_port) in rule.ports
+                    or any(kw in (v.affected_service or "").lower() for kw in rule.services)
                 ][:5]
 
         if matched:
@@ -344,3 +343,11 @@ def evaluate_host_rules(
             results.append((rule, round(score, 1), matched_cves))
 
     return results
+
+
+def _port_number(affected_port: Optional[str]) -> Optional[int]:
+    """Extract the port number from a "22/tcp" string (None if missing/invalid)."""
+    try:
+        return int((affected_port or "").split("/")[0])
+    except ValueError:
+        return None
