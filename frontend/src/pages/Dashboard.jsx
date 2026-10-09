@@ -1,14 +1,15 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
-  Network, Globe, Server, Lock, ArrowRight, Activity, Clock,
-  AlertTriangle, ShieldAlert, Crosshair, Route, ClipboardList,
-  ShieldCheck, TrendingUp,
+  Network, Globe, Server, CheckCircle2, ArrowRight, Activity, Clock,
+  Crosshair, ClipboardList,
 } from "lucide-react";
 import { resultsApi } from "../services/api";
 import API from "../services/api";
 import { StatusBadge } from "../components/ui/Badge";
 import { LoadingOverlay } from "../components/ui/Loading";
+import PageHeader from "../components/ui/PageHeader";
+import SeverityBar from "../components/ui/SeverityBar";
 
 export default function Dashboard() {
   const [scans, setScans]         = useState([]);
@@ -44,122 +45,104 @@ export default function Dashboard() {
     running:     scans.filter((s) => s.status === "running").length,
   };
 
+  const severity = vulnStats && {
+    critical: vulnStats.by_severity?.critical ?? 0,
+    high: vulnStats.by_severity?.high ?? 0,
+    medium: vulnStats.by_severity?.medium ?? 0,
+    low: vulnStats.by_severity?.low ?? 0,
+  };
+
   return (
-    <div className="max-w-5xl mx-auto space-y-6 animate-fadeIn">
-      {/* Header */}
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-primary">Dashboard</h1>
-          <p className="text-sm text-muted mt-1">Intelligent Network Security Assessment Platform</p>
-        </div>
+    <div className="space-y-6 animate-fadeIn">
+      <PageHeader eyebrow="Overview" title="Dashboard" subtitle="Your scans, risk level and priorities at a glance.">
         {stats.running > 0 && (
-          <div className="flex items-center gap-2 text-xs text-yellow-400 bg-yellow-400/10 border border-yellow-400/30 rounded-full px-3 py-1.5">
-            <span className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse" />
+          <span className="badge badge-yellow">
+            <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 animate-pulse" />
             {stats.running} scan{stats.running > 1 ? "s" : ""} in progress
-          </div>
+          </span>
         )}
+      </PageHeader>
+
+      {/* KPIs */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard icon={Activity}     label="Total scans" value={stats.totalScans} />
+        <StatCard icon={Server}       label="Hosts found" value={stats.totalHosts} />
+        <StatCard icon={CheckCircle2} label="Completed"   value={stats.completed} />
+        <StatCard icon={Clock}        label="Running"     value={stats.running} live={stats.running > 0} />
       </div>
 
-      {/* Top stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard icon={Activity} label="Total Scans"  value={stats.totalScans}  color="blue"   />
-        <StatCard icon={Server}   label="Hosts Found"  value={stats.totalHosts}  color="green"  />
-        <StatCard icon={Lock}     label="Completed"    value={stats.completed}   color="purple" />
-        <StatCard icon={Clock}    label="Running"      value={stats.running}     color="yellow" pulse={stats.running > 0} />
-      </div>
+      <div className="grid gap-6 xl:grid-cols-5">
+        {/* Latest security assessment */}
+        <section className="card xl:col-span-2 flex flex-col">
+          <div className="flex items-center justify-between">
+            <h2 className="section-title">Latest assessment</h2>
+            {secStats && (
+              <Link to="/app/security-report" className="link text-xs inline-flex items-center gap-1">
+                Full report <ArrowRight size={12} />
+              </Link>
+            )}
+          </div>
+          {secStats ? (
+            <div className="mt-5 flex items-center gap-6 flex-1">
+              <ScoreRing score={secStats.security_score} />
+              <dl className="grid gap-4 flex-1">
+                <Metric label="Network risk" value={secStats.network_risk_level ?? "N/A"} className={RISK_COLOR[secStats.network_risk_level]} />
+                <Metric label="Attack paths" value={secStats.attack_graph?.paths ?? 0} />
+                <Metric label="Weaponized exploits" value={secStats.exploitability?.weaponized ?? 0} />
+              </dl>
+            </div>
+          ) : (
+            <p className="mt-5 text-sm text-muted">Run a scan to get a security score.</p>
+          )}
+        </section>
 
-      {/* Security score + latest scan summary */}
-      {secStats && (
-        <div className="card">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold text-primary flex items-center gap-2">
-              <ShieldCheck size={15} className="text-blue-400" />
-              Latest Security Assessment
-            </h2>
-            <Link to="/app/security-report" className="text-xs text-info flex items-center gap-1 hover:underline">
-              Full Report <ArrowRight size={11} />
+        {/* Vulnerability overview */}
+        <section className="card xl:col-span-3">
+          <div className="flex items-center justify-between">
+            <h2 className="section-title">Vulnerabilities by severity</h2>
+            <Link to="/app/vulnerabilities" className="link text-xs inline-flex items-center gap-1">
+              View all <ArrowRight size={12} />
             </Link>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <SecurityScoreCell score={secStats.security_score} />
-            <div className="rounded-lg p-3 bg-slate-800/50 text-center">
-              <p className="text-xl font-bold text-red-400">{secStats.exploitability?.weaponized ?? 0}</p>
-              <p className="text-xs text-muted mt-0.5">Weaponized</p>
-            </div>
-            <div className="rounded-lg p-3 bg-slate-800/50 text-center">
-              <p className="text-xl font-bold text-purple-400">{secStats.attack_graph?.paths ?? 0}</p>
-              <p className="text-xs text-muted mt-0.5">Attack Paths</p>
-            </div>
-            <div className="rounded-lg p-3 bg-slate-800/50 text-center">
-              <p className={`text-xl font-bold ${RISK_COLOR[secStats.network_risk_level] ?? "text-gray-400"}`}>
-                {secStats.network_risk_level ?? "N/A"}
+          {severity ? (
+            <>
+              <p className="mt-5 flex items-baseline gap-2">
+                <span className="stat-value text-4xl text-primary">{vulnStats.total ?? 0}</span>
+                <span className="text-sm text-muted">CVEs across all scans</span>
               </p>
-              <p className="text-xs text-muted mt-0.5">Network Risk</p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Vulnerability stats */}
-      {vulnStats && (
-        <div className="card">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold text-primary flex items-center gap-2">
-              <ShieldAlert size={15} className="text-orange-400" />
-              Vulnerability Overview
-            </h2>
-            <Link to="/app/vulnerabilities" className="text-xs text-info flex items-center gap-1 hover:underline">
-              View all <ArrowRight size={11} />
-            </Link>
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-            {[
-              { label: "Critical", value: vulnStats.by_severity?.critical ?? 0, color: "text-red-500 bg-red-500/10" },
-              { label: "High",     value: vulnStats.by_severity?.high ?? 0,     color: "text-orange-500 bg-orange-500/10" },
-              { label: "Medium",   value: vulnStats.by_severity?.medium ?? 0,   color: "text-yellow-500 bg-yellow-500/10" },
-              { label: "Low",      value: vulnStats.by_severity?.low ?? 0,      color: "text-blue-400 bg-blue-400/10" },
-              { label: "Total CVEs", value: vulnStats.total ?? 0,               color: "text-muted bg-slate-800/50" },
-            ].map(({ label, value, color }) => (
-              <div key={label} className={`rounded-xl p-3 text-center ${color}`}>
-                <p className="text-lg font-bold">{value}</p>
-                <p className="text-xs mt-0.5 opacity-80">{label}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+              <SeverityBar counts={severity} className="mt-5" />
+            </>
+          ) : (
+            <p className="mt-5 text-sm text-muted">No vulnerability data yet.</p>
+          )}
+        </section>
+      </div>
 
       {/* Quick actions */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <ActionCard to="/app/scan/network"    icon={Network}       title="Network Scan"       desc="Auto-detect subnet and discover all LAN hosts"                 badge="ARP + Nmap"       color="blue"   />
-        <ActionCard to="/app/scan/domain"     icon={Globe}         title="Domain / IP Scan"   desc="Scan a specific domain, hostname, or IP address"              badge="Port scan"        color="purple" />
-        <ActionCard to="/app/attack-graph"    icon={Crosshair}     title="Attack Graph"        desc="Visualize attack paths and lateral movement possibilities"    badge="Dynamic analysis" color="red"    />
-        <ActionCard to="/app/security-report" icon={ClipboardList} title="Security Report"     desc="Full assessment with score, exploitability and remediation"   badge="PDF Export"       color="orange" />
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+        <ActionCard to="/app/scan/network"    icon={Network}       title="Network scan"    desc="Discover the hosts of a local network (ARP + Nmap)." />
+        <ActionCard to="/app/scan/domain"     icon={Globe}         title="Domain / IP scan" desc="Scan one hostname or IPv4 address." />
+        <ActionCard to="/app/attack-graph"    icon={Crosshair}     title="Attack graph"    desc="See entry points and lateral movement." />
+        <ActionCard to="/app/security-report" icon={ClipboardList} title="Security report" desc="Score, exploitability and remediation, as PDF." />
       </div>
 
       {/* Recent scans */}
-      <div className="card">
+      <section className="card">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-base font-semibold text-primary flex items-center gap-2">
-            <TrendingUp size={15} className="text-blue-400" />
-            Recent Scans
-          </h2>
-          <Link to="/app/history" className="text-xs text-info flex items-center gap-1 hover:underline">
-            View all <ArrowRight size={12} />
+          <h2 className="section-title">Recent scans</h2>
+          <Link to="/app/history" className="link text-xs inline-flex items-center gap-1">
+            Full history <ArrowRight size={12} />
           </Link>
         </div>
 
         {loading ? (
           <LoadingOverlay message="Loading scans..." />
         ) : scans.length === 0 ? (
-          <div className="py-10 text-center space-y-3">
-            <div className="w-12 h-12 rounded-full bg-blue-500/10 flex items-center justify-center mx-auto">
-              <Network size={20} className="text-blue-500 opacity-50" />
-            </div>
-            <p className="text-muted text-sm">No scans yet.</p>
+          <div className="py-10 text-center space-y-4">
+            <p className="text-muted text-sm">No scans yet. Start with one of these:</p>
             <div className="flex justify-center gap-3">
-              <Link to="/app/scan/network" className="btn-primary text-xs px-3 py-1.5">Network Scan</Link>
-              <Link to="/app/scan/domain"  className="btn-secondary text-xs px-3 py-1.5">Domain Scan</Link>
+              <Link to="/app/scan/domain"  className="btn-primary">Domain / IP scan</Link>
+              <Link to="/app/scan/network" className="btn-secondary">Network scan</Link>
             </div>
           </div>
         ) : (
@@ -172,7 +155,7 @@ export default function Dashboard() {
                   <th>Hosts</th>
                   <th>Status</th>
                   <th>Date</th>
-                  <th></th>
+                  <th><span className="sr-only">Actions</span></th>
                 </tr>
               </thead>
               <tbody>
@@ -184,14 +167,14 @@ export default function Dashboard() {
                         <span className="capitalize">{scan.type}</span>
                       </span>
                     </td>
-                    <td className="font-mono text-xs max-w-[180px] truncate">{scan.target}</td>
+                    <td className="font-mono text-xs max-w-[220px] truncate text-primary">{scan.target}</td>
                     <td className="font-medium">{scan.hosts_count ?? 0}</td>
                     <td><StatusBadge status={scan.status} /></td>
                     <td className="text-xs text-muted">
                       {scan.started_at ? new Date(scan.started_at).toLocaleString() : "—"}
                     </td>
-                    <td>
-                      <Link to={`/app/history/${scan.id}`} className="text-xs text-info hover:underline flex items-center gap-0.5">
+                    <td className="text-right">
+                      <Link to={`/app/history/${scan.id}`} className="link text-xs inline-flex items-center gap-0.5">
                         View <ArrowRight size={11} />
                       </Link>
                     </td>
@@ -201,77 +184,83 @@ export default function Dashboard() {
             </table>
           </div>
         )}
-      </div>
+      </section>
     </div>
   );
 }
 
 const RISK_COLOR = {
-  CRITICAL: "text-red-400",
-  HIGH:     "text-orange-400",
-  MEDIUM:   "text-yellow-400",
-  LOW:      "text-green-400",
-  NONE:     "text-slate-400",
+  CRITICAL: "text-danger",
+  HIGH:     "text-orange-500 dark:text-orange-400",
+  MEDIUM:   "text-warning",
+  LOW:      "text-success",
+  NONE:     "text-muted",
 };
 
-function SecurityScoreCell({ score }) {
-  const color = score >= 80 ? "text-green-400" : score >= 60 ? "text-yellow-400" : score >= 40 ? "text-orange-400" : "text-red-400";
-  const label = score >= 80 ? "Secure" : score >= 60 ? "Moderate" : score >= 40 ? "At Risk" : "Critical";
+function scoreColor(score) {
+  if (score >= 80) return "var(--success-text)";
+  if (score >= 60) return "var(--warning-text)";
+  if (score >= 40) return "var(--sev-high)";
+  return "var(--danger-text)";
+}
+
+/** Circular 0–100 security score (higher is better). */
+function ScoreRing({ score = 0 }) {
+  const label = score >= 80 ? "Secure" : score >= 60 ? "Moderate" : score >= 40 ? "At risk" : "Critical";
+  const r = 42;
+  const circumference = 2 * Math.PI * r;
+  const color = scoreColor(score);
   return (
-    <div className="rounded-lg p-3 bg-slate-800/50 text-center">
-      <p className={`text-2xl font-black ${color}`}>{score}</p>
-      <p className={`text-xs font-semibold mt-0.5 ${color}`}>{label}</p>
-      <p className="text-[10px] text-muted">/ 100</p>
+    <div className="relative w-32 h-32 flex-shrink-0" role="img" aria-label={`Security score ${score} out of 100, ${label}`}>
+      <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
+        <circle cx="50" cy="50" r={r} fill="none" stroke="var(--line)" strokeWidth="8" />
+        <circle
+          cx="50" cy="50" r={r} fill="none" stroke={color} strokeWidth="8" strokeLinecap="round"
+          strokeDasharray={circumference} strokeDashoffset={circumference * (1 - score / 100)}
+          style={{ transition: "stroke-dashoffset 600ms var(--ease)" }}
+        />
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center">
+        <span className="stat-value text-3xl text-primary">{score}</span>
+        <span className="text-[11px] font-semibold mt-1" style={{ color }}>{label}</span>
+      </div>
     </div>
   );
 }
 
-function StatCard({ icon: Icon, label, value, color, pulse = false }) {
-  const colors = {
-    blue:   "text-blue-500 bg-blue-500/10",
-    green:  "text-green-500 bg-green-500/10",
-    purple: "text-purple-500 bg-purple-500/10",
-    yellow: "text-yellow-500 bg-yellow-500/10",
-  };
+function Metric({ label, value, className = "text-primary" }) {
+  return (
+    <div className="flex items-baseline justify-between gap-4" style={{ borderBottom: "1px solid var(--line)", paddingBottom: "0.6rem" }}>
+      <dt className="text-xs text-muted">{label}</dt>
+      <dd className={`font-display font-semibold ${className}`}>{value}</dd>
+    </div>
+  );
+}
 
+function StatCard({ icon: Icon, label, value, live = false }) {
   return (
     <div className="card-sm">
-      <div className="flex items-center gap-3">
-        <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${colors[color]} ${pulse ? "animate-pulse-ring" : ""}`}>
-          <Icon size={16} className={colors[color].split(" ")[0]} />
-        </div>
-        <div>
-          <p className="text-xl font-bold text-primary">{value}</p>
-          <p className="text-xs text-muted">{label}</p>
-        </div>
+      <div className="flex items-center justify-between">
+        <p className="font-mono uppercase text-muted" style={{ fontSize: "0.68rem", letterSpacing: "0.1em" }}>{label}</p>
+        <Icon size={16} className={live ? "text-accent-text animate-pulse" : "text-muted"} aria-hidden="true" />
       </div>
+      <p className="stat-value text-3xl text-primary mt-3">{value}</p>
     </div>
   );
 }
 
-function ActionCard({ to, icon: Icon, title, desc, badge, color }) {
-  const colorMap = {
-    blue:   "bg-blue-600 hover:bg-blue-700",
-    purple: "bg-purple-600 hover:bg-purple-700",
-    red:    "bg-red-700 hover:bg-red-800",
-    orange: "bg-orange-600 hover:bg-orange-700",
-  };
-
+function ActionCard({ to, icon: Icon, title, desc }) {
   return (
-    <Link to={to} className="card group block hover:ring-1 hover:ring-blue-500/30 transition-all duration-200">
+    <Link to={to} className="card card-link group block">
       <div className="flex items-start justify-between">
-        <div className="flex items-center gap-3">
-          <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-white ${colorMap[color]}`}>
-            <Icon size={18} />
-          </div>
-          <div>
-            <p className="font-semibold text-primary">{title}</p>
-            <p className="text-xs text-muted mt-0.5">{badge}</p>
-          </div>
-        </div>
-        <ArrowRight size={16} className="text-muted group-hover:text-primary group-hover:translate-x-1 transition-all" />
+        <span className="w-10 h-10 rounded-xl flex items-center justify-center"
+              style={{ background: "var(--accent-soft)", color: "var(--accent-text)" }}>
+          <Icon size={18} aria-hidden="true" />
+        </span>
+        <ArrowRight size={16} className="text-muted group-hover:text-accent-text transition-transform duration-200 group-hover:translate-x-1" />
       </div>
-      <p className="text-sm text-tertiary mt-3">{desc}</p>
+      <p className="section-title mt-4">{title}</p>
+      <p className="text-sm text-tertiary mt-1">{desc}</p>
     </Link>
   );
 }
