@@ -45,7 +45,7 @@ export default function SecurityReport() {
   const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
-    API.get("/results/scans").then((r) => {
+    API.get("/results").then((r) => {
       const completed = (r.scans || []).filter((s) => s.status === "completed");
       setScans(completed);
       if (completed.length > 0) setScanId(completed[0].id);
@@ -88,12 +88,12 @@ export default function SecurityReport() {
           <select
             value={scanId}
             onChange={(e) => setScanId(e.target.value)}
-            className="input text-sm py-1.5 w-64"
+            className="input-field text-sm py-1.5 w-64"
           >
             <option value="">Select a scan…</option>
             {scans.map((s) => (
               <option key={s.id} value={s.id}>
-                {s.target} — {new Date(s.created_at).toLocaleDateString()}
+                {s.type} · {s.target} · {new Date(s.started_at).toLocaleDateString()}
               </option>
             ))}
           </select>
