@@ -5,6 +5,7 @@ import InterfaceSelector from "../components/scan/InterfaceSelector";
 import ScanProgress from "../components/scan/ScanProgress";
 import ScanResults from "../components/scan/ScanResults";
 import { useScan } from "../hooks/useScan";
+import PageHeader from "../components/ui/PageHeader";
 
 export default function NetworkScan() {
   const [selectedIface, setSelectedIface] = useState("");
@@ -23,15 +24,12 @@ export default function NetworkScan() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6 animate-fadeIn">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-primary">Network Scan</h1>
-          <p className="text-sm text-muted mt-1">
-            Automatically detect subnet and discover all LAN hosts
-          </p>
-        </div>
+    <div className="max-w-4xl space-y-6 animate-fadeIn">
+      <PageHeader
+        eyebrow="Scan"
+        title="Network scan"
+        subtitle="Pick an interface: VIPER computes its subnet and discovers every host on it."
+      >
         {isDone && scanId && (
           <Link
             to={`/app/topology?scan=${scanId}`}
@@ -41,7 +39,7 @@ export default function NetworkScan() {
             View Topology
           </Link>
         )}
-      </div>
+      </PageHeader>
 
       {/* Config card */}
       <div className="card space-y-5">
@@ -108,7 +106,7 @@ export default function NetworkScan() {
       {/* Progress */}
       {hasStarted && (
         <div className="card">
-          <h2 className="text-sm font-semibold text-primary mb-4">Scan Progress</h2>
+          <h2 className="section-title mb-4">Scan progress</h2>
           <ScanProgress
             status={status}
             progress={progress}
@@ -123,9 +121,9 @@ export default function NetworkScan() {
       {hosts.length > 0 && (
         <div className="card">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-sm font-semibold text-primary">
-              Discovered Hosts
-              <span className="ml-2 badge badge-blue">{hosts.length}</span>
+            <h2 className="section-title flex items-center gap-2">
+              Discovered hosts
+              <span className="badge badge-gray">{hosts.length}</span>
             </h2>
           </div>
           <ScanResults hosts={hosts} />

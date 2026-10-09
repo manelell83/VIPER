@@ -3,6 +3,7 @@ import { Play, Square, Search, Globe } from "lucide-react";
 import ScanProgress from "../components/scan/ScanProgress";
 import ScanResults from "../components/scan/ScanResults";
 import { useScan } from "../hooks/useScan";
+import PageHeader from "../components/ui/PageHeader";
 
 // Only scan hosts you are authorised to test. scanme.nmap.org is provided by
 // the Nmap project for exactly this purpose.
@@ -25,14 +26,12 @@ export default function DomainScan() {
   };
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6 animate-fadeIn">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-primary">Domain / IP Scan</h1>
-        <p className="text-sm text-muted mt-1">
-          Scan a domain name, hostname, or IP address
-        </p>
-      </div>
+    <div className="max-w-4xl space-y-6 animate-fadeIn">
+      <PageHeader
+        eyebrow="Scan"
+        title="Domain / IP scan"
+        subtitle="Scan one IPv4 address or hostname: open ports, service versions, then CVEs and attack paths."
+      />
 
       {/* Target input */}
       <div className="card space-y-4">
@@ -107,9 +106,9 @@ export default function DomainScan() {
       {/* Results */}
       {hosts.length > 0 && (
         <div className="card">
-          <h2 className="text-sm font-semibold text-primary mb-4">
+          <h2 className="section-title mb-4 flex items-center gap-2">
             Results
-            <span className="ml-2 badge badge-blue">{hosts.length}</span>
+            <span className="badge badge-gray">{hosts.length}</span>
           </h2>
           <ScanResults hosts={hosts} />
         </div>
