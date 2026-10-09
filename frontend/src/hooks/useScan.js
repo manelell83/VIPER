@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from "react";
-import { scanApi } from "../services/api";
+import { scanApi, resultsApi } from "../services/api";
 import { createScanWebSocket } from "../services/websocket";
 
 const initialState = {
@@ -118,9 +118,14 @@ export function useScan() {
               progress: 100,
               message: data.message,
               vulnScanActive: false,
-              attackGraph: state.attackGraph,
             });
             wsRef.current?.close();
+            // Load the final host list from the API: a domain scan sends no
+            // "host_scanned" events, and events emitted before the socket
+            // connected are not replayed.
+            resultsApi.get(scanId)
+              .then((r) => _updateState({ hosts: r.hosts ?? [] }))
+              .catch(() => {});
             break;
 
           case "error":
