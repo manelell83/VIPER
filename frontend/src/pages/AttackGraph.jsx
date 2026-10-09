@@ -178,7 +178,7 @@ export default function AttackGraph() {
                 )}
 
                 <Link
-                  to={`/attack-paths?scan=${selectedScan}`}
+                  to={`/app/attack-paths?scan=${selectedScan}`}
                   className="mt-3 flex items-center gap-1 text-xs text-info hover:underline"
                 >
                   View all attack paths <ChevronRight size={12} />

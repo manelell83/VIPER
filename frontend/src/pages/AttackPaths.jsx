@@ -141,7 +141,7 @@ export default function AttackPaths() {
             <p>No attack paths found.</p>
             <p className="text-xs mt-1">
               Complete a network scan first, then visit the{" "}
-              <Link to="/attack-graph" className="text-info hover:underline">Attack Graph</Link> page.
+              <Link to="/app/attack-graph" className="text-info hover:underline">Attack Graph</Link> page.
             </p>
           </div>
         ) : (

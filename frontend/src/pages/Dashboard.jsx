@@ -76,7 +76,7 @@ export default function Dashboard() {
               <ShieldCheck size={15} className="text-blue-400" />
               Latest Security Assessment
             </h2>
-            <Link to="/security-report" className="text-xs text-info flex items-center gap-1 hover:underline">
+            <Link to="/app/security-report" className="text-xs text-info flex items-center gap-1 hover:underline">
               Full Report <ArrowRight size={11} />
             </Link>
           </div>
@@ -108,7 +108,7 @@ export default function Dashboard() {
               <ShieldAlert size={15} className="text-orange-400" />
               Vulnerability Overview
             </h2>
-            <Link to="/vulnerabilities" className="text-xs text-info flex items-center gap-1 hover:underline">
+            <Link to="/app/vulnerabilities" className="text-xs text-info flex items-center gap-1 hover:underline">
               View all <ArrowRight size={11} />
             </Link>
           </div>
@@ -131,10 +131,10 @@ export default function Dashboard() {
 
       {/* Quick actions */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <ActionCard to="/scan/network"    icon={Network}       title="Network Scan"       desc="Auto-detect subnet and discover all LAN hosts"                 badge="ARP + Nmap"       color="blue"   />
-        <ActionCard to="/scan/domain"     icon={Globe}         title="Domain / IP Scan"   desc="Scan a specific domain, hostname, or IP address"              badge="Port scan"        color="purple" />
-        <ActionCard to="/attack-graph"    icon={Crosshair}     title="Attack Graph"        desc="Visualize attack paths and lateral movement possibilities"    badge="Dynamic analysis" color="red"    />
-        <ActionCard to="/security-report" icon={ClipboardList} title="Security Report"     desc="Full assessment with score, exploitability and remediation"   badge="PDF Export"       color="orange" />
+        <ActionCard to="/app/scan/network"    icon={Network}       title="Network Scan"       desc="Auto-detect subnet and discover all LAN hosts"                 badge="ARP + Nmap"       color="blue"   />
+        <ActionCard to="/app/scan/domain"     icon={Globe}         title="Domain / IP Scan"   desc="Scan a specific domain, hostname, or IP address"              badge="Port scan"        color="purple" />
+        <ActionCard to="/app/attack-graph"    icon={Crosshair}     title="Attack Graph"        desc="Visualize attack paths and lateral movement possibilities"    badge="Dynamic analysis" color="red"    />
+        <ActionCard to="/app/security-report" icon={ClipboardList} title="Security Report"     desc="Full assessment with score, exploitability and remediation"   badge="PDF Export"       color="orange" />
       </div>
 
       {/* Recent scans */}
@@ -144,7 +144,7 @@ export default function Dashboard() {
             <TrendingUp size={15} className="text-blue-400" />
             Recent Scans
           </h2>
-          <Link to="/history" className="text-xs text-info flex items-center gap-1 hover:underline">
+          <Link to="/app/history" className="text-xs text-info flex items-center gap-1 hover:underline">
             View all <ArrowRight size={12} />
           </Link>
         </div>
@@ -158,8 +158,8 @@ export default function Dashboard() {
             </div>
             <p className="text-muted text-sm">No scans yet.</p>
             <div className="flex justify-center gap-3">
-              <Link to="/scan/network" className="btn-primary text-xs px-3 py-1.5">Network Scan</Link>
-              <Link to="/scan/domain"  className="btn-secondary text-xs px-3 py-1.5">Domain Scan</Link>
+              <Link to="/app/scan/network" className="btn-primary text-xs px-3 py-1.5">Network Scan</Link>
+              <Link to="/app/scan/domain"  className="btn-secondary text-xs px-3 py-1.5">Domain Scan</Link>
             </div>
           </div>
         ) : (
@@ -191,7 +191,7 @@ export default function Dashboard() {
                       {scan.started_at ? new Date(scan.started_at).toLocaleString() : "—"}
                     </td>
                     <td>
-                      <Link to={`/history/${scan.id}`} className="text-xs text-info hover:underline flex items-center gap-0.5">
+                      <Link to={`/app/history/${scan.id}`} className="text-xs text-info hover:underline flex items-center gap-0.5">
                         View <ArrowRight size={11} />
                       </Link>
                     </td>

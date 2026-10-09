@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import AppShell from "./components/layout/AppShell";
 import Dashboard from "./pages/Dashboard";
 import NetworkScan from "./pages/NetworkScan";
@@ -20,12 +20,30 @@ function RequireAuth({ children }) {
   return getToken() ? children : <Navigate to="/login" replace />;
 }
 
+// The app used to live at the root (/vulnerabilities, /history/:id, ...).
+// Old URLs are redirected to /app/..., keeping the query string.
+const LEGACY_SECTIONS = [
+  "scan", "topology", "history", "reports", "vulnerabilities",
+  "attack-graph", "attack-paths", "exploitability", "security-report",
+];
+
+function NotFound() {
+  const { pathname, search } = useLocation();
+  const section = pathname.split("/")[1];
+  if (LEGACY_SECTIONS.includes(section)) {
+    return <Navigate to={`/app${pathname}${search}`} replace />;
+  }
+  return <Navigate to="/" replace />;
+}
+
 export default function App() {
   return (
     <BrowserRouter>
       <Routes>
+        <Route index element={<Navigate to={getToken() ? "/app" : "/login"} replace />} />
         <Route path="login" element={<Login />} />
-        <Route element={<RequireAuth><AppShell /></RequireAuth>}>
+
+        <Route path="app" element={<RequireAuth><AppShell /></RequireAuth>}>
           <Route index element={<Dashboard />} />
           <Route path="scan/network" element={<NetworkScan />} />
           <Route path="scan/domain" element={<DomainScan />} />
@@ -38,8 +56,10 @@ export default function App() {
           <Route path="attack-paths" element={<AttackPaths />} />
           <Route path="exploitability" element={<Exploitability />} />
           <Route path="security-report" element={<SecurityReport />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<Navigate to="/app" replace />} />
         </Route>
+
+        <Route path="*" element={<NotFound />} />
       </Routes>
     </BrowserRouter>
   );

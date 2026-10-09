@@ -34,7 +34,7 @@ export default function NetworkScan() {
         </div>
         {isDone && scanId && (
           <Link
-            to={`/topology?scan=${scanId}`}
+            to={`/app/topology?scan=${scanId}`}
             className="btn-info"
           >
             <GitFork size={15} />

@@ -11,7 +11,7 @@ export default function Login() {
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  if (getToken()) return <Navigate to="/" replace />;
+  if (getToken()) return <Navigate to="/app" replace />;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -20,7 +20,7 @@ export default function Login() {
     try {
       const { access_token, user } = await authApi.login(username, password);
       saveSession(access_token, user);
-      navigate("/", { replace: true });
+      navigate("/app", { replace: true });
     } catch (err) {
       setError(err.message);
     } finally {

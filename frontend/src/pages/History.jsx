@@ -38,8 +38,8 @@ export function HistoryList() {
         <div className="card py-12 text-center">
           <p className="text-muted">No scans yet.</p>
           <div className="flex justify-center gap-3 mt-4">
-            <Link to="/scan/network" className="btn-primary">Network Scan</Link>
-            <Link to="/scan/domain" className="btn-secondary">Domain Scan</Link>
+            <Link to="/app/scan/network" className="btn-primary">Network Scan</Link>
+            <Link to="/app/scan/domain" className="btn-secondary">Domain Scan</Link>
           </div>
         </div>
       ) : (
@@ -80,7 +80,7 @@ export function HistoryList() {
                     </td>
                     <td>
                       <div className="flex items-center gap-1">
-                        <Link to={`/history/${scan.id}`} className="btn-icon" title="View Details">
+                        <Link to={`/app/history/${scan.id}`} className="btn-icon" title="View Details">
                           <Eye size={14} />
                         </Link>
                         {scan.status === "completed" && (
@@ -127,7 +127,7 @@ export function ScanDetail() {
   return (
     <div className="max-w-4xl mx-auto space-y-6 animate-fadeIn">
       <div className="flex items-center gap-3">
-        <Link to="/history" className="btn-icon">
+        <Link to="/app/history" className="btn-icon">
           <ArrowLeft size={16} />
         </Link>
         <div>
@@ -144,7 +144,7 @@ export function ScanDetail() {
               <button onClick={() => reportsApi.downloadPdf(scan.id).catch(() => {})} className="btn-secondary text-xs py-1.5">
                 <Download size={13} /> PDF
               </button>
-              <Link to={`/topology?scan=${scan.id}`} className="btn-info text-xs py-1.5">
+              <Link to={`/app/topology?scan=${scan.id}`} className="btn-info text-xs py-1.5">
                 View Topology
               </Link>
             </>
