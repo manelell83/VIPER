@@ -11,14 +11,18 @@ Both the tool and my recent work on it follow the same loop:
 I applied it to the codebase itself.
 
 ## My focus — Risk-based vulnerability prioritization
-Within the team, my focus was the logic that turns raw findings into a
-ranked list of priorities (risk_engine.py, risk_classifier.py,
-remediation_engine.py):
-- **Find:** correlate discovered services against known CVEs (NVD API)
+VIPER's pipeline is **find → assess → resolve**. My focus was the
+**assess and resolve** stages — the logic that turns detected services
+and their CVEs into a ranked list of remediation priorities
+(risk_engine.py, risk_classifier.py, remediation_engine.py):
 - **Assess:** score and rank each vulnerability by CVSS, plus an
   exploit-maturity heuristic (indicative labels derived from CVSS and a
   small curated set of well-known CVEs)
 - **Resolve:** produce a prioritized remediation order
+
+The upstream **find** stage — service discovery and CVE correlation
+against the NVD API (service_parser.py, cve_lookup.py) — feeds this
+logic.
 
 ## Security audit & hardening — individual work (verifiable in git history)
 A concrete find → assess → resolve exercise on a real codebase:
