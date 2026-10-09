@@ -134,6 +134,7 @@
 
 /* ── 2b. Semantic tokens — dark theme (default) ───────────────────────── */
 .dark {
+  color-scheme: dark;   /* native controls (select popups) follow the dark theme */
   --bg: var(--viper-ink-900);
   --bg-sunken: var(--viper-ink-950);
   --surface: var(--viper-ink-800);
