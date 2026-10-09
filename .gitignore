@@ -18,8 +18,9 @@ build/
 *.sqlite
 *.sqlite3
 
-# Environment
+# Environment (secrets) — only the template is versioned
 .env
+.env.*
 !.env.example
 
 # Node
@@ -51,3 +52,7 @@ viperv2-db/
 .coverage
 coverage.xml
 htmlcov/
+
+# Generated reports (downloaded JSON / PDF exports)
+viperv2_report_*.pdf
+viperv2_scan_*.json
