@@ -70,25 +70,6 @@ export default function Reports() {
           ))}
         </div>
       )}
-
-      {/* AI Placeholder */}
-      <div className="card border-dashed border-purple-500/30 bg-purple-500/5">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-purple-500/20 flex items-center justify-center">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-purple-400">
-              <path d="M12 2L2 7l10 5 10-5-10-5z" />
-              <path d="M2 17l10 5 10-5" />
-              <path d="M2 12l10 5 10-5" />
-            </svg>
-          </div>
-          <div>
-            <p className="text-sm font-semibold text-purple-400">AI Analysis — Coming Soon</p>
-            <p className="text-xs text-muted mt-0.5">
-              Intelligent vulnerability assessment and risk scoring powered by AI
-            </p>
-          </div>
-        </div>
-      </div>
     </div>
   );
 }
