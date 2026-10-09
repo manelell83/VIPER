@@ -58,7 +58,7 @@ export default function Sidebar() {
     <aside className="sidebar" aria-label="Main navigation">
       <div className="sidebar-section">
         <Link to="/app" aria-label="VIPER dashboard">
-          <Logo size={26} subtitle="Risk-based vuln analysis" />
+          <Logo size={26} subtitle="Risk analysis" />
         </Link>
       </div>
 
