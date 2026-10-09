@@ -1,0 +1,203 @@
+/*
+ * VIPER design tokens
+ *
+ * Three layers:
+ *   1. Raw palette   (--viper-*)  : brand colours, never used directly by components
+ *   2. Semantic      (--bg, --text, --accent ...) : what components use; redefined per theme
+ *   3. Legacy aliases (--color-*) : older variable names still used in some components,
+ *                                   mapped onto the semantic tokens
+ *
+ * Theme: dark is the default (html.dark). Without .dark, the light "cream" theme applies.
+ * Text colours were chosen for WCAG AA contrast (>= 4.5:1) on their background in each theme.
+ */
+
+:root {
+  /* ── 1. Raw palette ─────────────────────────────────────────────────── */
+  --viper-ink-950: #08080a;
+  --viper-ink-900: #0b0b0e;
+  --viper-ink-850: #111115;
+  --viper-ink-800: #16161b;
+  --viper-ink-700: #1e1d24;
+  --viper-ink-600: #2a2931;
+  --viper-ink-500: #3a3942;
+  --viper-bone:    #f5f3ef;
+  --viper-cream:   #f2ece3;
+  --viper-cream-2: #e9e1d4;
+  --viper-paper:   #fbf8f3;
+  --viper-crimson:        #c01f3c;
+  --viper-crimson-bright: #e4324f;
+  --viper-crimson-deep:   #9f1932;
+  --viper-green: #1a7a3a;
+  --viper-gold:  #b8860b;
+
+  /* ── Typography ─────────────────────────────────────────────────────── */
+  --font-display: "Space Grotesk", "Inter", system-ui, sans-serif;
+  --font-body: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.375rem;
+  --text-2xl: 1.75rem;
+  --text-3xl: 2.25rem;
+  --text-display: clamp(2.75rem, 6vw, 4.75rem);
+
+  /* ── Spacing (4px grid) ─────────────────────────────────────────────── */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+  --space-24: 6rem;
+
+  /* ── Shape & motion ─────────────────────────────────────────────────── */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 22px;
+  --radius-full: 999px;
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --dur-fast: 120ms;
+  --dur: 200ms;
+
+  /* ── 2. Semantic tokens — light "cream" theme ───────────────────────── */
+  --bg: var(--viper-cream);
+  --bg-sunken: var(--viper-cream-2);
+  --surface: var(--viper-paper);
+  --surface-2: #f3ede4;
+  --input-bg: #fffdf9;
+  --line: #ddd4c6;
+  --line-strong: #c8bdad;
+
+  --text: #16141a;
+  --text-2: #3c3842;
+  --text-3: #57525d;
+  --text-muted: #6b6670;
+  --text-on-accent: #ffffff;
+
+  --accent: var(--viper-crimson);
+  --accent-hover: var(--viper-crimson-bright);
+  --accent-text: var(--viper-crimson);
+  --accent-soft: rgba(192, 31, 60, 0.09);
+  --accent-line: rgba(192, 31, 60, 0.35);
+
+  --success: var(--viper-green);
+  --success-text: var(--viper-green);
+  --warning: var(--viper-gold);
+  --warning-text: #7a5a06;
+  --danger: var(--viper-crimson);
+  --danger-text: var(--viper-crimson);
+
+  --focus-ring: var(--viper-crimson);
+  --shadow-sm: 0 1px 2px rgba(22, 20, 26, 0.06);
+  --shadow-md: 0 6px 24px -8px rgba(22, 20, 26, 0.16);
+  --shadow-lg: 0 18px 48px -16px rgba(22, 20, 26, 0.22);
+
+  /* Severity (used by charts, graphs and gauges) */
+  --sev-critical: #c01f3c;
+  --sev-high: #dc5f28;
+  --sev-medium: #b8860b;
+  --sev-low: #5b7699;
+  --sev-none: #77737c;
+
+  /* ── 3. Legacy aliases ──────────────────────────────────────────────── */
+  --color-bg-body: var(--bg);
+  --color-bg-sidebar: var(--bg-sunken);
+  --color-bg-surface: var(--surface);
+  --color-bg-surface-hover: var(--surface-2);
+  --color-bg-elevated: var(--surface);
+  --color-bg-input: var(--input-bg);
+  --color-border: var(--line);
+  --color-border-input: var(--line-strong);
+  --color-text-primary: var(--text);
+  --color-text-secondary: var(--text-2);
+  --color-text-tertiary: var(--text-3);
+  --color-text-muted: var(--text-muted);
+  --color-text-disabled: var(--line-strong);
+  --color-scrollbar-thumb: var(--line-strong);
+  --color-scrollbar-thumb-hover: var(--text-muted);
+  --color-glass-bg: rgba(22, 20, 26, 0.03);
+  --color-glass-border: var(--line);
+  --gradient-text: linear-gradient(135deg, var(--text) 0%, var(--text-3) 100%);
+  --color-topology-bg: var(--surface);
+  --color-topology-node-bg: var(--surface);
+  --color-topology-subgroup-bg: rgba(22, 20, 26, 0.03);
+  --color-topology-zone: rgba(22, 20, 26, 0.04);
+}
+
+/* ── 2b. Semantic tokens — dark theme (default) ───────────────────────── */
+.dark {
+  --bg: var(--viper-ink-900);
+  --bg-sunken: var(--viper-ink-950);
+  --surface: var(--viper-ink-800);
+  --surface-2: var(--viper-ink-700);
+  --input-bg: var(--viper-ink-850);
+  --line: #26252d;
+  --line-strong: #393842;
+
+  --text: var(--viper-bone);
+  --text-2: #d6d2cb;
+  --text-3: #aaa5ad;
+  --text-muted: #8d8a93;
+
+  --accent-text: var(--viper-crimson-bright);
+  --accent-soft: rgba(192, 31, 60, 0.14);
+  --accent-line: rgba(228, 50, 79, 0.4);
+
+  --success-text: #3fbf6a;
+  --warning-text: #cfa22c;
+  --danger-text: var(--viper-crimson-bright);
+
+  --focus-ring: var(--viper-crimson-bright);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 8px 28px -10px rgba(0, 0, 0, 0.6);
+  --shadow-lg: 0 24px 60px -20px rgba(0, 0, 0, 0.75);
+
+  --sev-critical: #e4324f;
+  --sev-high: #ea7a45;
+  --sev-medium: #cfa22c;
+  --sev-low: #7690b0;
+  --sev-none: #8d8a93;
+
+  --color-glass-bg: rgba(245, 243, 239, 0.03);
+  --color-topology-bg: var(--viper-ink-850);
+  --color-topology-node-bg: var(--viper-ink-800);
+  --color-topology-subgroup-bg: rgba(245, 243, 239, 0.04);
+  --color-topology-zone: rgba(245, 243, 239, 0.03);
+}
+
+/* Sections that are always cream / always ink, whatever the theme (landing page) */
+.section-cream {
+  --bg: var(--viper-cream);
+  --surface: var(--viper-paper);
+  --surface-2: #f3ede4;
+  --line: #ddd4c6;
+  --text: #16141a;
+  --text-2: #3c3842;
+  --text-3: #57525d;
+  --text-muted: #6b6670;
+  --accent-text: var(--viper-crimson);
+  background: var(--bg);
+  color: var(--text);
+}
+
+.section-ink {
+  --bg: var(--viper-ink-900);
+  --surface: var(--viper-ink-800);
+  --surface-2: var(--viper-ink-700);
+  --line: #26252d;
+  --text: var(--viper-bone);
+  --text-2: #d6d2cb;
+  --text-3: #aaa5ad;
+  --text-muted: #8d8a93;
+  --accent-text: var(--viper-crimson-bright);
+  background: var(--bg);
+  color: var(--text);
+}
