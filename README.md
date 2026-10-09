@@ -47,6 +47,18 @@ pytest --cov=app
 
 ---
 
+## Running with Docker
+
+Requires Docker with Docker Compose.
+
+```bash
+cp backend/.env.example backend/.env     # then set JWT_SECRET (see below)
+docker compose up -d --build
+docker compose exec backend python -m app.create_admin --username admin --email admin@example.com
+```
+
+Open http://localhost:3000. nginx serves the frontend and forwards `/api` and `/ws` to the backend. Both ports are bound to `127.0.0.1` only. The SQLite database is kept in the `viperv2-db` volume, and `backend/.env` is never copied into the image. Stop the stack with `docker compose down`.
+
 ## Installation and running (local)
 
 Tested on Windows 11. On Linux and macOS the commands are the same, apart from how you activate the virtual environment.
@@ -113,6 +125,6 @@ Open http://localhost:5173 and sign in. The Vite dev server forwards `/api` and 
 - **CVE correlation is keyword-based.** Services are matched to CVEs through NVD keyword searches (for example `openbsd openssh 8.2`), not through strict CPE matching. This produces false positives: in testing, old Windows RPC CVEs (2000–2004) were reported against a modern Windows 11 host. Treat the results as leads to investigate, not confirmed vulnerabilities.
 - **Exploit maturity is a heuristic.** Labels such as `WEAPONIZED`, `FUNCTIONAL` or `POC` don't come from a real exploit data source (for example EPSS, CISA KEV or Exploit-DB). For 26 well-known CVEs (EternalBlue, BlueKeep, …) the label comes from a hard-coded table. For every other CVE it is inferred from the CVSS score and vector. Treat it as an indication only.
 - **WebSocket progress is incomplete.** The first events of a scan can be missed if the client connects after the scan has started, because events are not replayed. No progress events are sent during the Nmap phase (about 20 s). This is a design limitation.
-- **Docker images do not build yet.** The Dockerfiles and `docker-compose.yml` are in the repository but don't currently work. Run the application locally as described above.
+- **In Docker, LAN discovery and OS detection are not available.** The backend container sits on Docker's internal network and runs as an unprivileged user. Scans of an IP address or hostname work, but ARP discovery of the host's real LAN does not, and Nmap OS detection (`-O`, which needs root) is skipped. For LAN scans, run the backend locally.
 - **npm audit reports 7 advisories** (rated moderate and high) in the build-time tooling of Tailwind CSS 3 (`braces`, `micromatch`, `postcss-selector-parser`). They don't affect the code that ships to the browser: `npm audit --omit=dev` reports 0 vulnerabilities. Fixing them requires migrating to Tailwind 4.
 - **`datetime.utcnow()` deprecation warnings** still need to be replaced with timezone-aware datetimes.
