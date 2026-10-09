@@ -1,8 +1,10 @@
 import { useState } from "react";
-import { Navigate, useNavigate } from "react-router-dom";
-import { Shield, LogIn } from "lucide-react";
+import { Link, Navigate, useNavigate } from "react-router-dom";
+import { LogIn, ArrowLeft } from "lucide-react";
 import { authApi } from "../services/api";
 import { getToken, saveSession } from "../services/auth";
+import Logo from "../components/brand/Logo";
+import AuthLayout from "../components/layout/AuthLayout";
 
 export default function Login() {
   const navigate = useNavigate();
@@ -29,20 +31,19 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-6" style={{ background: "var(--color-bg-body)" }}>
-      <form onSubmit={handleSubmit} className="card w-full max-w-sm space-y-4">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center">
-            <Shield size={16} className="text-white" />
-          </div>
-          <div>
-            <p className="text-sm font-bold text-primary leading-tight">ViperV2</p>
-            <p className="text-xs text-muted leading-tight">Sign in to continue</p>
-          </div>
-        </div>
+    <AuthLayout>
+      <Link to="/" className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-primary mb-10">
+        <ArrowLeft size={14} /> Back to home
+      </Link>
+      <div className="lg:hidden mb-8"><Logo size={26} /></div>
 
+      <p className="eyebrow">Welcome back</p>
+      <h1 className="page-title mt-2">Sign in to VIPER</h1>
+      <p className="page-subtitle">Use the account an administrator created for you.</p>
+
+      <form onSubmit={handleSubmit} className="mt-8 space-y-5" noValidate>
         <div>
-          <label htmlFor="username" className="text-sm font-medium text-secondary block mb-2">Username</label>
+          <label htmlFor="username" className="field-label">Username</label>
           <input
             id="username"
             className="input-field"
@@ -50,11 +51,12 @@ export default function Login() {
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             required
+            autoFocus
           />
         </div>
 
         <div>
-          <label htmlFor="password" className="text-sm font-medium text-secondary block mb-2">Password</label>
+          <label htmlFor="password" className="field-label">Password</label>
           <input
             id="password"
             type="password"
@@ -66,13 +68,22 @@ export default function Login() {
           />
         </div>
 
-        {error && <p className="text-sm text-danger">{error}</p>}
+        {error && (
+          <p role="alert" className="text-sm text-danger rounded-lg px-3 py-2"
+             style={{ background: "var(--accent-soft)", border: "1px solid var(--accent-line)" }}>
+            {error}
+          </p>
+        )}
 
-        <button type="submit" className="btn-primary w-full justify-center" disabled={loading}>
-          <LogIn size={15} />
+        <button type="submit" className="btn-primary w-full py-3" disabled={loading || !username || !password}>
+          <LogIn size={16} />
           {loading ? "Signing in…" : "Sign in"}
         </button>
       </form>
-    </div>
+
+      <p className="mt-8 text-sm text-tertiary">
+        No account yet? <Link to="/signup" className="link">How to get one</Link>
+      </p>
+    </AuthLayout>
   );
 }

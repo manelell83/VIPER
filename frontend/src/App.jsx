@@ -12,6 +12,9 @@ import AttackPaths from "./pages/AttackPaths";
 import Exploitability from "./pages/Exploitability";
 import SecurityReport from "./pages/SecurityReport";
 import Login from "./pages/Login";
+import Landing from "./pages/Landing";
+import Signup from "./pages/Signup";
+import Users from "./pages/Users";
 import { getToken } from "./services/auth";
 
 // Redirects to /login when there is no token. The real check is on the
@@ -40,8 +43,9 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route index element={<Navigate to={getToken() ? "/app" : "/login"} replace />} />
+        <Route index element={<Landing />} />
         <Route path="login" element={<Login />} />
+        <Route path="signup" element={<Signup />} />
 
         <Route path="app" element={<RequireAuth><AppShell /></RequireAuth>}>
           <Route index element={<Dashboard />} />
@@ -56,6 +60,7 @@ export default function App() {
           <Route path="attack-paths" element={<AttackPaths />} />
           <Route path="exploitability" element={<Exploitability />} />
           <Route path="security-report" element={<SecurityReport />} />
+          <Route path="users" element={<Users />} />
           <Route path="*" element={<Navigate to="/app" replace />} />
         </Route>
 

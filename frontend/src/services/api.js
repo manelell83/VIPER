@@ -22,13 +22,19 @@ API.interceptors.response.use(
       clearSession();
       window.location.assign("/login");
     }
-    const msg = err.response?.data?.detail || err.message || "Unknown error";
+    const detail = err.response?.data?.detail;
+    // FastAPI validation errors (422) are a list of {loc, msg}; show their messages
+    const msg = Array.isArray(detail)
+      ? detail.map((d) => `${d.loc?.at(-1) ?? "field"}: ${d.msg}`).join(" · ")
+      : detail || err.message || "Unknown error";
     return Promise.reject(new Error(typeof msg === "string" ? msg : "Invalid request"));
   }
 );
 
 export const authApi = {
   login: (username, password) => API.post("/auth/login", { username, password }),
+  // Admin only (the backend returns 403 for analysts)
+  createUser: (user) => API.post("/auth/users", user),
 };
 
 export const interfacesApi = {
