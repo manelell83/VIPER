@@ -15,7 +15,7 @@ export default function InterfaceSelector({ value, onChange, disabled }) {
       const res = await interfacesApi.list();
       setInterfaces(res.interfaces);
       if (res.interfaces.length === 1 && !value) {
-        onChange(res.interfaces[0].name);
+        onChange(res.interfaces[0].name, res.interfaces[0]);
       }
     } catch (err) {
       setError(err.message);
@@ -62,7 +62,7 @@ export default function InterfaceSelector({ value, onChange, disabled }) {
             <button
               key={iface.name}
               disabled={disabled}
-              onClick={() => onChange(iface.name)}
+              onClick={() => onChange(iface.name, iface)}
               className={`w-full text-left rounded-xl p-4 border transition-all duration-150 ${
                 value === iface.name
                   ? "border-blue-500 bg-blue-500/10 ring-1 ring-blue-500"
