@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Shield, AlertTriangle, RefreshCw, Wifi } from "lucide-react";
 import VulnerabilityTable from "../components/vulnerabilities/VulnerabilityTable";
+import { ThreatLegend } from "../components/vulnerabilities/ThreatBadges";
 import RiskCard from "../components/vulnerabilities/RiskCard";
 import SeverityBadge from "../components/vulnerabilities/SeverityBadge";
 import { LoadingOverlay } from "../components/ui/Loading";
@@ -76,7 +77,7 @@ export default function Vulnerabilities() {
       <PageHeader
         eyebrow="Analysis"
         title="Vulnerabilities"
-        subtitle="CVEs matched to the services found by your scans (NVD API). Matching is keyword-based: verify a finding before acting on it."
+        subtitle="CVEs matched to the detected services. Confirmed = matched by CPE (product + version); weak = keyword only. KEV and EPSS show real-world exploitation, not whether this host is vulnerable."
       >
           <select
             className="input-field max-w-[240px] text-sm"
@@ -173,7 +174,12 @@ export default function Vulnerabilities() {
                   or NVD returned no results for the detected versions.</p>
               </div>
             ) : (
-              <VulnerabilityTable vulnerabilities={vulns} showHostColumn />
+              <>
+                <ThreatLegend />
+                <div className="mt-4">
+                  <VulnerabilityTable vulnerabilities={vulns} showHostColumn />
+                </div>
+              </>
             )}
           </div>
         </div>
