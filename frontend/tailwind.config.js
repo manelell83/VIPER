@@ -58,9 +58,9 @@ export default {
         line: { DEFAULT: "var(--line)", strong: "var(--line-strong)" },
       },
       fontFamily: {
-        display: ["Space Grotesk", "Inter", "system-ui", "sans-serif"],
-        sans: ["Inter", "system-ui", "-apple-system", "Segoe UI", "Roboto", "sans-serif"],
-        mono: ["JetBrains Mono", "ui-monospace", "Consolas", "monospace"],
+        display: ["Space Grotesk Variable", "Inter Variable", "system-ui", "sans-serif"],
+        sans: ["Inter Variable", "system-ui", "-apple-system", "Segoe UI", "Roboto", "sans-serif"],
+        mono: ["JetBrains Mono Variable", "ui-monospace", "Consolas", "monospace"],
       },
       borderRadius: {
         token: "var(--radius-md)",

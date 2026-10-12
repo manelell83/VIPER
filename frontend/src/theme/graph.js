@@ -5,7 +5,7 @@
 
 export const CANVAS_BG = "#0b0b0e";
 export const LABEL_COLOR = "#d6d2cb";
-export const LABEL_FONT = "JetBrains Mono, Consolas, monospace";
+export const LABEL_FONT = "JetBrains Mono Variable, Consolas, monospace";
 export const HIGHLIGHT = "#f5f3ef";
 export const SELECTED = "#f0566b";
 export const EDGE_DEFAULT = "#393842";
