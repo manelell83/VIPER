@@ -9,10 +9,10 @@ export default function CvssGauge({ score = 0, size = 48 }) {
   const dash = pct * circ;
 
   const color =
-    score >= 9 ? "#ef4444" :
-    score >= 7 ? "#f97316" :
-    score >= 4 ? "#eab308" :
-    score > 0  ? "#3b82f6" : "#6b7280";
+    score >= 9 ? "var(--sev-critical)" :
+    score >= 7 ? "var(--sev-high)" :
+    score >= 4 ? "var(--sev-medium)" :
+    score > 0  ? "var(--sev-low)" : "var(--sev-none)";
 
   return (
     <div className="relative inline-flex items-center justify-center" style={{ width: size, height: size }}>
