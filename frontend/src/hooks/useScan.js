@@ -137,10 +137,10 @@ export function useScan() {
     });
   }, []);
 
-  const startNetworkScan = useCallback(async (interfaceName) => {
+  const startNetworkScan = useCallback(async (interfaceName, authorizationConfirmed) => {
     setState({ ...initialState, status: "starting" });
     try {
-      const res = await scanApi.startNetwork(interfaceName);
+      const res = await scanApi.startNetwork(interfaceName, authorizationConfirmed);
       _updateState({ scanId: res.scan_id, status: "running" });
       _connectWs(res.scan_id);
     } catch (err) {
@@ -148,10 +148,10 @@ export function useScan() {
     }
   }, [_connectWs]);
 
-  const startDomainScan = useCallback(async (target) => {
+  const startDomainScan = useCallback(async (target, authorizationConfirmed) => {
     setState({ ...initialState, status: "starting" });
     try {
-      const res = await scanApi.startDomain(target);
+      const res = await scanApi.startDomain(target, authorizationConfirmed);
       _updateState({ scanId: res.scan_id, status: "running" });
       _connectWs(res.scan_id);
     } catch (err) {

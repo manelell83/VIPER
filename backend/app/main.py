@@ -3,7 +3,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 from app.core.config import settings
-from app.core.database import engine, Base
+from app.core.audit import configure_logging
+from app.core.database import engine, Base, add_missing_columns
 from app.api.deps import get_current_user
 from app.api.routes import interfaces, scan, topology, results, reports
 from app.api.routes import vulnerabilities
@@ -22,7 +23,9 @@ import app.exploitability.models          # noqa: F401
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    configure_logging(settings.AUDIT_LOG_FILE)
     Base.metadata.create_all(bind=engine)
+    add_missing_columns(engine)   # new columns on databases created by older versions
     yield
 
 

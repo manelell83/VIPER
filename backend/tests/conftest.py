@@ -15,6 +15,10 @@ import os
 # startup hook never creates a real viperv2.db file) and a test-only JWT secret.
 os.environ["DATABASE_URL"] = "sqlite://"
 os.environ["JWT_SECRET"] = "test-only-secret-not-used-anywhere-else-0123456789"
+# Audit records go to a temporary file, never into the repository
+import tempfile
+AUDIT_LOG_FILE = os.path.join(tempfile.mkdtemp(prefix="viper-audit-"), "audit.log")
+os.environ["AUDIT_LOG_FILE"] = AUDIT_LOG_FILE
 
 import pytest
 from sqlalchemy import create_engine, event

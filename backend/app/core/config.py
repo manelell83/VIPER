@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     NVD_API_KEY: str = ""
     CVE_CACHE_TTL: int = 3600
 
+    # Append-only audit log of scan authorizations (who confirmed what, when)
+    AUDIT_LOG_FILE: str = str(_BASE_DIR / "audit.log")
+
     # Attack graph
     MAX_ATTACK_PATHS: int = 30
     MAX_ATTACK_HOPS: int = 6

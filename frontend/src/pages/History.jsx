@@ -169,6 +169,22 @@ export function ScanDetail() {
         ))}
       </div>
 
+      {/* Authorization record (who confirmed they may scan this target, and when) */}
+      <div className="card-sm text-sm">
+        <p className="text-xs text-muted">Authorization</p>
+        {scan.authorization?.by ? (
+          <>
+            <p className="text-primary mt-0.5">
+              Confirmed by <span className="font-semibold">{scan.authorization.by}</span> on{" "}
+              <time dateTime={scan.authorization.at}>{new Date(scan.authorization.at).toLocaleString()}</time>
+            </p>
+            <p className="text-xs text-tertiary mt-1">&ldquo;{scan.authorization.statement}&rdquo;</p>
+          </>
+        ) : (
+          <p className="text-tertiary mt-0.5">No authorization recorded (scan made before this feature existed).</p>
+        )}
+      </div>
+
       {/* Hosts */}
       <div className="card">
         <h2 className="section-title mb-4 flex items-center gap-2">

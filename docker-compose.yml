@@ -8,6 +8,8 @@ services:
       - ./backend/.env
     environment:
       - DATABASE_URL=sqlite:////app/data/viperv2.db
+      # Audit log of scan authorizations, kept in the data volume
+      - AUDIT_LOG_FILE=/app/data/audit.log
     volumes:
       - viperv2-db:/app/data
     # Published on localhost only: the API is not reachable from other machines.

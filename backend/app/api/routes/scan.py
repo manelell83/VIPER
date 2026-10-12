@@ -1,10 +1,13 @@
 from uuid import uuid4
 from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, StrictBool, field_validator
 from sqlalchemy.orm import Session
 
+from app.api.deps import get_current_user
+from app.core.audit import AUTHORIZATION_STATEMENT, record_scan_authorization
 from app.core.database import get_db, SessionLocal
 from app.models.scan import ScanSession
+from app.models.user import User
 from app.scanners.interface_detector import get_interface_by_name
 from app.scanners.network_calculator import is_valid_scan_target
 from app.scanners.scan_engine import run_network_scan, run_domain_scan
@@ -13,11 +16,27 @@ from app.api.websocket import manager
 router = APIRouter()
 
 
-class NetworkScanRequest(BaseModel):
+class ScanAuthorization(BaseModel):
+    # Must be explicitly true: the user confirms they own the target or are
+    # authorised to scan it (AUTHORIZATION_STATEMENT). No confirmation, no scan.
+    # Required on purpose: with a default value, Pydantic would not run the
+    # validator when the field is missing, and the check could be skipped.
+    # StrictBool: only a JSON true is accepted (not "yes", "on" or 1).
+    authorization_confirmed: StrictBool
+
+    @field_validator("authorization_confirmed")
+    @classmethod
+    def must_be_confirmed(cls, value: bool) -> bool:
+        if value is not True:
+            raise ValueError("you must confirm you own the target or are authorised to scan it")
+        return value
+
+
+class NetworkScanRequest(ScanAuthorization):
     interface: str = Field(min_length=1, max_length=64)
 
 
-class DomainScanRequest(BaseModel):
+class DomainScanRequest(ScanAuthorization):
     target: str = Field(max_length=253)   # IPv4 address or hostname
 
     @field_validator("target")
@@ -57,19 +76,28 @@ async def _background_domain_scan(scan_id: str, target: str):
         db.close()
 
 
+@router.get("/authorization")
+async def authorization_statement():
+    """The statement a user must confirm before starting an active scan."""
+    return {"statement": AUTHORIZATION_STATEMENT}
+
+
 @router.post("/network")
 async def start_network_scan(
     body: NetworkScanRequest,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
 ):
-    """Start a dynamic LAN scan on the selected interface."""
+    """Start a dynamic LAN scan on the selected interface (authorization confirmed)."""
     # Only interfaces that actually exist on this machine are accepted
-    if get_interface_by_name(body.interface) is None:
+    iface = get_interface_by_name(body.interface)
+    if iface is None:
         raise HTTPException(status_code=422, detail=f"Unknown network interface: {body.interface}")
 
     scan_id = str(uuid4())
-    scan = ScanSession(id=scan_id, type="network", target="detecting...", interface=body.interface)
+    scan = ScanSession(id=scan_id, type="network", target=iface["subnet"], interface=body.interface)
+    record_scan_authorization(scan, user.username)
     db.add(scan)
     db.commit()
 
@@ -83,12 +111,14 @@ async def start_domain_scan(
     body: DomainScanRequest,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
 ):
     """Start a port scan of an IPv4 address or hostname (validated by DomainScanRequest)."""
     target = body.target
 
     scan_id = str(uuid4())
     scan = ScanSession(id=scan_id, type="domain", target=target)
+    record_scan_authorization(scan, user.username)
     db.add(scan)
     db.commit()
 

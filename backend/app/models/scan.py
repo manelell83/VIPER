@@ -18,6 +18,12 @@ class ScanSession(Base):
     started_at = Column(DateTime, default=datetime.utcnow)
     completed_at = Column(DateTime, nullable=True)
 
+    # Authorization confirmation (see app/core/audit.py): who confirmed they may
+    # scan this target, when (UTC), and the exact statement they confirmed.
+    authorized_by = Column(String, nullable=True)
+    authorized_at = Column(DateTime, nullable=True)
+    authorization_statement = Column(Text, nullable=True)
+
     hosts = relationship("Host", back_populates="scan", cascade="all, delete-orphan")
 
     def to_dict(self):
@@ -31,6 +37,11 @@ class ScanSession(Base):
             "started_at": self.started_at.isoformat() if self.started_at else None,
             "completed_at": self.completed_at.isoformat() if self.completed_at else None,
             "hosts_count": len(self.hosts),
+            "authorization": {
+                "by": self.authorized_by,
+                "at": self.authorized_at.isoformat() + "Z" if self.authorized_at else None,
+                "statement": self.authorization_statement,
+            },
         }
 
 

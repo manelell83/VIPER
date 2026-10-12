@@ -4,12 +4,15 @@ import { Link } from "react-router-dom";
 import InterfaceSelector from "../components/scan/InterfaceSelector";
 import ScanProgress from "../components/scan/ScanProgress";
 import ScanResults from "../components/scan/ScanResults";
+import AuthorizationConfirm from "../components/scan/AuthorizationConfirm";
 import { useScan } from "../hooks/useScan";
 import PageHeader from "../components/ui/PageHeader";
 
 export default function NetworkScan() {
   const [selectedIface, setSelectedIface] = useState("");
   const [ifaceInfo, setIfaceInfo] = useState(null);
+  // Confirmation applies to one network: changing the interface clears it
+  const [authorized, setAuthorized] = useState(false);
   // Number of host addresses in the selected subnet (e.g. /24 -> 254, /16 -> 65,534)
   const subnetHosts = ifaceInfo?.prefix_len != null ? 2 ** (32 - ifaceInfo.prefix_len) - 2 : null;
   const { status, progress, message, hosts, logs, error, scanId, startNetworkScan, reset } = useScan();
@@ -20,7 +23,8 @@ export default function NetworkScan() {
 
   const handleStart = () => {
     if (!selectedIface) return;
-    startNetworkScan(selectedIface);
+    if (!authorized) return;
+    startNetworkScan(selectedIface, authorized);
   };
 
   return (
@@ -45,7 +49,7 @@ export default function NetworkScan() {
       <div className="card space-y-5">
         <InterfaceSelector
           value={selectedIface}
-          onChange={(name, iface) => { setSelectedIface(name); setIfaceInfo(iface ?? null); }}
+          onChange={(name, iface) => { setSelectedIface(name); setIfaceInfo(iface ?? null); setAuthorized(false); }}
           disabled={isRunning}
         />
 
@@ -72,11 +76,18 @@ export default function NetworkScan() {
           </div>
         )}
 
+        <AuthorizationConfirm
+          checked={authorized}
+          onChange={setAuthorized}
+          target={ifaceInfo?.subnet}
+          disabled={isRunning || !selectedIface}
+        />
+
         <div className="flex items-center gap-3 pt-2">
           {!isRunning ? (
             <button
               className="btn-primary"
-              disabled={!selectedIface}
+              disabled={!selectedIface || !authorized}
               onClick={handleStart}
             >
               <Play size={15} />

@@ -41,11 +41,14 @@ export const interfacesApi = {
   list: () => API.get("/interfaces"),
 };
 
+// authorization_confirmed: the user ticked "I own this target or am authorised
+// to scan it". The backend refuses any scan without it and records who/when.
 export const scanApi = {
-  startNetwork: (interface_name) =>
-    API.post("/scan/network", { interface: interface_name }),
-  startDomain: (target) =>
-    API.post("/scan/domain", { target }),
+  authorizationStatement: () => API.get("/scan/authorization"),
+  startNetwork: (interface_name, authorizationConfirmed) =>
+    API.post("/scan/network", { interface: interface_name, authorization_confirmed: authorizationConfirmed === true }),
+  startDomain: (target, authorizationConfirmed) =>
+    API.post("/scan/domain", { target, authorization_confirmed: authorizationConfirmed === true }),
   status: (scanId) => API.get(`/scan/status/${scanId}`),
 };
 
