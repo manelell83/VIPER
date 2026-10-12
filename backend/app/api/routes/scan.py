@@ -9,7 +9,8 @@ from app.core.database import get_db, SessionLocal
 from app.models.scan import ScanSession
 from app.models.user import User
 from app.scanners.interface_detector import get_interface_by_name
-from app.scanners.network_calculator import is_valid_scan_target
+from app.scanners.network_calculator import is_valid_scan_target, network_size
+from app.core.config import settings
 from app.scanners.scan_engine import run_network_scan, run_domain_scan
 from app.api.websocket import manager
 
@@ -94,6 +95,16 @@ async def start_network_scan(
     iface = get_interface_by_name(body.interface)
     if iface is None:
         raise HTTPException(status_code=422, detail=f"Unknown network interface: {body.interface}")
+
+    # Refuse oversized networks: every live host gets an nmap scan, so a /16
+    # (65,534 addresses) would run for hours.
+    size = network_size(iface["subnet"])
+    if size > settings.MAX_NETWORK_HOSTS:
+        raise HTTPException(
+            status_code=422,
+            detail=(f"{iface['subnet']} has {size} addresses; network scans are limited to "
+                    f"{settings.MAX_NETWORK_HOSTS} (a /24). Use an interface on a smaller network."),
+        )
 
     scan_id = str(uuid4())
     scan = ScanSession(id=scan_id, type="network", target=iface["subnet"], interface=body.interface)

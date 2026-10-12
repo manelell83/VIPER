@@ -55,7 +55,10 @@ function HostRow({ host }) {
             </div>
           )}
           {host.mac && (
-            <p className="hidden md:block text-xs font-mono text-muted">{host.mac}</p>
+            <p className="hidden md:block text-xs text-muted">
+              <span className="font-mono">{host.mac}</span>
+              {host.mac_vendor && <span className="ml-1">· {host.mac_vendor}</span>}
+            </p>
           )}
           <Badge variant={openPorts.length > 0 ? "blue" : "gray"}>
             {openPorts.length} port{openPorts.length !== 1 ? "s" : ""}
@@ -72,6 +75,7 @@ function HostRow({ host }) {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-2">
             <InfoCell icon={Globe} label="IP" value={host.ip} mono />
             <InfoCell icon={Terminal} label="MAC" value={host.mac || "N/A"} mono />
+            <InfoCell label="Vendor" value={host.mac_vendor || (host.mac ? "Unknown" : "N/A")} />
             <InfoCell icon={Cpu} label="OS" value={host.os || "Unknown"} />
             <InfoCell label="Hostname" value={host.hostname || "N/A"} />
           </div>

@@ -61,7 +61,8 @@ export default function InterfaceSelector({ value, onChange, disabled }) {
           {interfaces.map((iface) => (
             <button
               key={iface.name}
-              disabled={disabled}
+              disabled={disabled || iface.scannable === false}
+              title={iface.scannable === false ? `${iface.host_count.toLocaleString("en-US")} addresses: above the scan limit` : undefined}
               onClick={() => onChange(iface.name, iface)}
               aria-pressed={value === iface.name}
               className={`w-full text-left rounded-xl p-4 border transition-all duration-150 ${
@@ -84,6 +85,9 @@ export default function InterfaceSelector({ value, onChange, disabled }) {
                 </div>
                 <div className="text-right">
                   <p className="text-xs text-tertiary font-mono">{iface.subnet}</p>
+                  {iface.scannable === false && (
+                    <p className="text-xs text-warning mt-0.5">{iface.host_count.toLocaleString("en-US")} addresses: too large to scan</p>
+                  )}
                   <div className={`flex items-center gap-1 text-xs mt-0.5 ${iface.is_up ? "text-success" : "text-danger"}`}>
                     <span className={`w-1.5 h-1.5 rounded-full inline-block ${iface.is_up ? "bg-green-500" : "bg-red-500"}`} />
                     {iface.is_up ? "Active" : "Inactive"}

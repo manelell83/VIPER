@@ -37,6 +37,11 @@ class Settings(BaseSettings):
     NVD_API_KEY: str = ""
     CVE_CACHE_TTL: int = 3600
 
+    # Largest network a network scan accepts, in host addresses (254 = one /24).
+    # Each live host gets an nmap -sV scan, so a /16 (65,534 addresses) would
+    # run for hours and flood the network.
+    MAX_NETWORK_HOSTS: int = Field(default=254, ge=1, le=4094)
+
     # Append-only audit log of scan authorizations (who confirmed what, when)
     AUDIT_LOG_FILE: str = str(_BASE_DIR / "audit.log")
 

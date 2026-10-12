@@ -7,7 +7,10 @@ from sqlalchemy.orm import Session
 
 from app.models.scan import ScanSession, Host
 from app.scanners.interface_detector import get_interface_by_name
-from app.scanners.arp_scanner import arp_scan
+from app.scanners.arp_scanner import discover_hosts
+from app.scanners.network_calculator import network_size
+from app.scanners.oui import mac_vendor
+from app.core.config import settings
 from app.scanners.port_scanner import port_scan
 from app.scanners.network_calculator import resolve_target
 from app.vulnerability_scanner.vulnerability_engine import scan_all_hosts_vulnerabilities
@@ -41,6 +44,13 @@ async def run_network_scan(scan_id: str, interface_name: str, db: Session, emit:
             await _fail(scan, db, emit, f"Interface '{interface_name}' not found")
             return
 
+        # Defence in depth: the API already refuses networks above the limit
+        size = network_size(iface["subnet"])
+        if size > settings.MAX_NETWORK_HOSTS:
+            await _fail(scan, db, emit,
+                        f"{iface['subnet']} has {size} addresses; the limit is {settings.MAX_NETWORK_HOSTS}.")
+            return
+
         scan.status = "running"
         scan.target = iface["subnet"]
         db.commit()
@@ -52,17 +62,21 @@ async def run_network_scan(scan_id: str, interface_name: str, db: Session, emit:
             "ip": iface["ip"],
         }})
 
-        # --- ARP Discovery ---
-        await emit({"type": "progress", "message": f"Running ARP discovery on {iface['subnet']}...", "percent": 10})
-        raw_hosts = await loop.run_in_executor(executor, lambda: arp_scan(iface["subnet"]))
+        # --- Host discovery (ARP on the chosen interface, or ping sweep) ---
+        await emit({"type": "progress", "message": f"Discovering live hosts on {iface['subnet']}...", "percent": 10})
+        discovery = await loop.run_in_executor(executor, lambda: discover_hosts(iface["subnet"], iface["ip"]))
+        raw_hosts = discovery["hosts"]
+        scan.discovery_method = discovery["method"]
+        scan.discovery_note = discovery["note"]
+        db.commit()
+        if discovery["note"]:
+            await emit({"type": "progress", "message": discovery["note"], "percent": 20})
 
-        if not raw_hosts:
-            await emit({"type": "progress", "message": "No hosts responded to ARP. Trying ping sweep...", "percent": 20})
-
+        method = "ARP" if discovery["method"] == "arp" else "ping sweep"
         await emit({
             "type": "arp_complete",
-            "message": f"Discovered {len(raw_hosts)} host(s) via ARP",
-            "data": {"count": len(raw_hosts)},
+            "message": f"Discovered {len(raw_hosts)} live host(s) via {method}",
+            "data": {"count": len(raw_hosts), "method": discovery["method"]},
             "percent": 30,
         })
 
@@ -86,6 +100,7 @@ async def run_network_scan(scan_id: str, interface_name: str, db: Session, emit:
                 scan_id=scan_id,
                 ip=ip,
                 mac=raw_host.get("mac"),
+                mac_vendor=mac_vendor(raw_host.get("mac")),
                 hostname=scan_result.get("hostname") or raw_host.get("hostname"),
                 os=scan_result.get("os"),
                 os_accuracy=scan_result.get("os_accuracy"),

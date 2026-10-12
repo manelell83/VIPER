@@ -3,6 +3,7 @@ import { Play, Square, Search, Globe } from "lucide-react";
 import ScanProgress from "../components/scan/ScanProgress";
 import ScanResults from "../components/scan/ScanResults";
 import AuthorizationConfirm from "../components/scan/AuthorizationConfirm";
+import ScanPrerequisites from "../components/scan/ScanPrerequisites";
 import { useScan } from "../hooks/useScan";
 import PageHeader from "../components/ui/PageHeader";
 
@@ -69,6 +70,8 @@ export default function DomainScan() {
             ))}
           </div>
         </div>
+
+        <ScanPrerequisites />
 
         <AuthorizationConfirm
           checked={authorized}

@@ -39,6 +39,8 @@ export const authApi = {
 
 export const interfacesApi = {
   list: () => API.get("/interfaces"),
+  // Admin rights, Npcap, Nmap on the backend machine, with fixes for what is missing
+  capabilities: () => API.get("/interfaces/capabilities"),
 };
 
 // authorization_confirmed: the user ticked "I own this target or am authorised

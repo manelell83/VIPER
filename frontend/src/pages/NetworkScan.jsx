@@ -5,6 +5,7 @@ import InterfaceSelector from "../components/scan/InterfaceSelector";
 import ScanProgress from "../components/scan/ScanProgress";
 import ScanResults from "../components/scan/ScanResults";
 import AuthorizationConfirm from "../components/scan/AuthorizationConfirm";
+import ScanPrerequisites from "../components/scan/ScanPrerequisites";
 import { useScan } from "../hooks/useScan";
 import PageHeader from "../components/ui/PageHeader";
 
@@ -14,7 +15,8 @@ export default function NetworkScan() {
   // Confirmation applies to one network: changing the interface clears it
   const [authorized, setAuthorized] = useState(false);
   // Number of host addresses in the selected subnet (e.g. /24 -> 254, /16 -> 65,534)
-  const subnetHosts = ifaceInfo?.prefix_len != null ? 2 ** (32 - ifaceInfo.prefix_len) - 2 : null;
+  const subnetHosts = ifaceInfo?.host_count ?? null;
+  const tooLarge = ifaceInfo?.scannable === false;
   const { status, progress, message, hosts, logs, error, scanId, startNetworkScan, reset } = useScan();
 
   const isRunning = status === "running" || status === "starting";
@@ -47,6 +49,8 @@ export default function NetworkScan() {
 
       {/* Config card */}
       <div className="card space-y-5">
+        <ScanPrerequisites />
+
         <InterfaceSelector
           value={selectedIface}
           onChange={(name, iface) => { setSelectedIface(name); setIfaceInfo(iface ?? null); setAuthorized(false); }}
@@ -64,14 +68,15 @@ export default function NetworkScan() {
           </p>
         </div>
 
-        {subnetHosts > 254 && (
+        {tooLarge && (
           <div className="flex gap-2 rounded-lg p-3 text-xs text-warning"
                style={{ background: "rgba(234, 179, 8, 0.08)", border: "1px solid rgba(234, 179, 8, 0.3)" }}>
             <AlertTriangle size={14} className="flex-shrink-0 mt-0.5" />
             <p>
               <span className="font-mono">{ifaceInfo.subnet}</span> contains{" "}
-              {subnetHosts.toLocaleString("en-US")} addresses. Scanning it can take a very long time;
-              a /24 network or smaller is recommended.
+              {subnetHosts.toLocaleString("en-US")} addresses. Network scans are limited to a /24
+              (254 addresses): every live host gets a full Nmap scan, so a larger network would run for
+              hours and flood it. Choose an interface on a smaller network.
             </p>
           </div>
         )}
@@ -87,7 +92,7 @@ export default function NetworkScan() {
           {!isRunning ? (
             <button
               className="btn-primary"
-              disabled={!selectedIface || !authorized}
+              disabled={!selectedIface || !authorized || tooLarge}
               onClick={handleStart}
             >
               <Play size={15} />

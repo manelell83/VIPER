@@ -65,6 +65,12 @@ def is_valid_ip(value: str) -> bool:
         return False
 
 
+def network_size(cidr: str) -> int:
+    """Number of usable host addresses in a network (e.g. /24 -> 254, /16 -> 65534)."""
+    network = ipaddress.IPv4Network(cidr, strict=False)
+    return max(network.num_addresses - 2, 1)
+
+
 def is_valid_cidr(value: str) -> bool:
     try:
         ipaddress.ip_network(value, strict=False)

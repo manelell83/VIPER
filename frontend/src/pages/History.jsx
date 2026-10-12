@@ -169,6 +169,15 @@ export function ScanDetail() {
         ))}
       </div>
 
+      {/* How live hosts were found (network scans) */}
+      {scan.discovery?.method && (
+        <div className="card-sm text-sm">
+          <p className="text-xs text-muted">Host discovery</p>
+          <p className="text-primary mt-0.5">{scan.discovery.method === "arp" ? "ARP on the selected interface" : "Ping sweep"}</p>
+          {scan.discovery.note && <p className="text-xs text-warning mt-1">{scan.discovery.note}</p>}
+        </div>
+      )}
+
       {/* Authorization record (who confirmed they may scan this target, and when) */}
       <div className="card-sm text-sm">
         <p className="text-xs text-muted">Authorization</p>

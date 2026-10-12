@@ -24,6 +24,11 @@ class ScanSession(Base):
     authorized_at = Column(DateTime, nullable=True)
     authorization_statement = Column(Text, nullable=True)
 
+    # Network scans: how live hosts were found ("arp" or "ping") and why, if
+    # ARP could not be used
+    discovery_method = Column(String, nullable=True)
+    discovery_note = Column(Text, nullable=True)
+
     hosts = relationship("Host", back_populates="scan", cascade="all, delete-orphan")
 
     def to_dict(self):
@@ -42,6 +47,7 @@ class ScanSession(Base):
                 "at": iso_utc(self.authorized_at),
                 "statement": self.authorization_statement,
             },
+            "discovery": {"method": self.discovery_method, "note": self.discovery_note},
         }
 
 
@@ -52,6 +58,7 @@ class Host(Base):
     scan_id = Column(String, ForeignKey("scan_sessions.id"), nullable=False)
     ip = Column(String, nullable=False)
     mac = Column(String, nullable=True)
+    mac_vendor = Column(String, nullable=True)     # from the IEEE OUI list (offline)
     hostname = Column(String, nullable=True)
     os = Column(String, nullable=True)
     os_accuracy = Column(Integer, nullable=True)
@@ -92,6 +99,7 @@ class Host(Base):
             "scan_id": self.scan_id,
             "ip": self.ip,
             "mac": self.mac,
+            "mac_vendor": self.mac_vendor,
             "hostname": self.hostname,
             "os": self.os,
             "os_accuracy": self.os_accuracy,
