@@ -19,8 +19,13 @@ from app.scanners.oui import LOCALLY_ADMINISTERED, mac_vendor
 
 @pytest.fixture
 def machine(monkeypatch):
-    """Configure the detected prerequisites: machine(admin=..., npcap=..., nmap=...)."""
-    def set_(admin=True, npcap=True, nmap="7.95", pcap=True):
+    """Configure the detected prerequisites for a Windows machine, so the tests
+    are deterministic regardless of the OS they run on (CI is Linux).
+
+    machine(admin=..., npcap=..., nmap=..., pcap=..., windows=...).
+    """
+    def set_(admin=True, npcap=True, nmap="7.95", pcap=True, windows=True):
+        monkeypatch.setattr(capabilities, "IS_WINDOWS", windows)
         monkeypatch.setattr(capabilities, "is_admin", lambda: admin)
         monkeypatch.setattr(capabilities, "npcap_installed", lambda: npcap)
         monkeypatch.setattr(capabilities, "nmap_version", lambda: nmap)
@@ -71,9 +76,8 @@ class TestCapabilities:
         assert [p["id"] for p in caps["problems"]] == ["pcap"]
         assert "WinPcap API-compatible" in caps["problems"][0]["fix"]
 
-    def test_npcap_not_applicable_outside_windows(self, machine, monkeypatch):
-        monkeypatch.setattr(capabilities, "IS_WINDOWS", False)
-        machine(npcap=None)     # Linux/macOS: root is enough for ARP
+    def test_npcap_not_applicable_outside_windows(self, machine):
+        machine(npcap=None, windows=False)     # Linux/macOS: root is enough for ARP
 
         assert capabilities.get_capabilities()["discovery_method"] == "arp"
 
@@ -88,19 +92,48 @@ class TestCapabilities:
 # ── MAC vendors ───────────────────────────────────────────────────────────────
 
 class TestMacVendor:
+    """Tests the wrapper logic. Scapy's OUI lookup is mocked, so results do not
+    depend on the exact vendor strings in Scapy's bundled database (which vary
+    by version and platform)."""
 
-    def test_virtualbox_guest(self):
-        assert mac_vendor("08:00:27:12:34:56") == "PCS Systemtechnik GmbH"   # VirtualBox's OUI
+    @pytest.fixture
+    def manuf(self, monkeypatch):
+        """manuf("Acme Corp") makes Scapy's lookup return that for any prefix."""
+        from scapy.all import conf
 
-    def test_case_insensitive(self):
-        assert mac_vendor("08:00:27:AB:CD:EF") == "PCS Systemtechnik GmbH"
+        def set_(value):
+            monkeypatch.setattr(conf.manufdb, "_get_manuf", lambda mac: value)
+        return set_
 
-    def test_locally_administered_address(self):
+    def test_returns_the_vendor_for_a_globally_assigned_mac(self, manuf):
+        manuf("Acme Corp")
+        assert mac_vendor("08:00:27:12:34:56") == "Acme Corp"      # VirtualBox-style OUI
+
+    def test_is_case_insensitive(self, manuf):
+        manuf("Acme Corp")
+        assert mac_vendor("08:00:27:AB:CD:EF") == "Acme Corp"
+
+    def test_locally_administered_address_is_flagged_without_a_lookup(self, manuf):
+        manuf("should not be used")   # bit set -> we must not consult the DB
         assert mac_vendor("0a:00:27:00:00:05") == LOCALLY_ADMINISTERED
 
     @pytest.mark.parametrize("mac", [None, "", "not-a-mac", "08-00-27-12-34-56"])
     def test_missing_or_invalid(self, mac):
         assert mac_vendor(mac) is None
+
+    def test_scapy_error_is_handled(self, monkeypatch):
+        from scapy.all import conf
+
+        def boom(mac):
+            raise RuntimeError("manuf db unavailable")
+        monkeypatch.setattr(conf.manufdb, "_get_manuf", boom)
+        assert mac_vendor("08:00:27:12:34:56") is None
+
+    def test_real_lookup_returns_a_string_or_none(self):
+        # Integration smoke test: whatever Scapy's DB holds, our wrapper must
+        # return a non-empty vendor string or None - never the MAC itself.
+        result = mac_vendor("08:00:27:12:34:56")
+        assert result is None or (isinstance(result, str) and result and ":" not in result)
 
     def test_unknown_prefix_returns_none(self, monkeypatch):
         # Scapy's database returns the MAC itself when it does not know the prefix
