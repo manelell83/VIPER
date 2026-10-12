@@ -26,10 +26,11 @@ export function HistoryList() {
   };
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6 animate-fadeIn">
+    <div className="max-w-5xl space-y-6 animate-fadeIn">
       <div>
-        <h1 className="text-2xl font-bold text-primary">Scan History</h1>
-        <p className="text-sm text-muted mt-1">All past scan sessions</p>
+        <p className="eyebrow mb-2">Reporting</p>
+        <h1 className="page-title">History</h1>
+        <p className="page-subtitle">Every scan session, with its status, duration and exports.</p>
       </div>
 
       {loading ? (
@@ -125,14 +126,15 @@ export function ScanDetail() {
   const { scan, hosts } = data;
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6 animate-fadeIn">
-      <div className="flex items-center gap-3">
-        <Link to="/app/history" className="btn-icon">
+    <div className="max-w-4xl space-y-6 animate-fadeIn">
+      <div className="flex items-center gap-3 flex-wrap">
+        <Link to="/app/history" className="btn-icon" aria-label="Back to history">
           <ArrowLeft size={16} />
         </Link>
         <div>
-          <h1 className="text-xl font-bold text-primary font-mono">{scan.target}</h1>
-          <p className="text-xs text-muted">{scan.type} · {scan.id.slice(0, 8)}…</p>
+          <p className="eyebrow mb-1">Scan · {scan.type}</p>
+          <h1 className="page-title font-mono" style={{ fontFamily: "var(--font-mono)", fontSize: "var(--text-xl)" }}>{scan.target}</h1>
+          <p className="text-xs text-muted font-mono">{scan.id.slice(0, 8)}…</p>
         </div>
         <div className="ml-auto flex items-center gap-2">
           <StatusBadge status={scan.status} />
@@ -169,8 +171,8 @@ export function ScanDetail() {
 
       {/* Hosts */}
       <div className="card">
-        <h2 className="text-sm font-semibold text-primary mb-4">
-          Hosts <span className="badge badge-blue ml-1">{hosts.length}</span>
+        <h2 className="section-title mb-4 flex items-center gap-2">
+          Hosts <span className="badge badge-gray">{hosts.length}</span>
         </h2>
         <ScanResults hosts={hosts} />
       </div>

@@ -2,17 +2,17 @@ import { useState, useEffect } from "react";
 import API, { reportsApi } from "../services/api";
 import ExploitabilityBadge from "../components/exploitability/ExploitabilityBadge";
 import RemediationCard from "../components/exploitability/RemediationCard";
-import { FileText, Download, RefreshCw, ShieldCheck, AlertTriangle, Crosshair, Route } from "lucide-react";
+import { Download, RefreshCw, ShieldCheck, AlertTriangle, Crosshair, Route } from "lucide-react";
 
 const SEV_COLOR = {
-  CRITICAL: "#ef4444",
-  HIGH:     "#f97316",
-  MEDIUM:   "#eab308",
-  LOW:      "#22c55e",
+  CRITICAL: "var(--sev-critical)",
+  HIGH:     "var(--sev-high)",
+  MEDIUM:   "var(--sev-medium)",
+  LOW:      "var(--sev-low)",
 };
 
 function ScoreGauge({ score }) {
-  const color = score >= 80 ? "#22c55e" : score >= 60 ? "#eab308" : score >= 40 ? "#f97316" : "#ef4444";
+  const color = score >= 80 ? "var(--success-text)" : score >= 60 ? "var(--warning-text)" : score >= 40 ? "var(--sev-high)" : "var(--danger-text)";
   const label = score >= 80 ? "SECURE" : score >= 60 ? "MODERATE" : score >= 40 ? "AT RISK" : "CRITICAL";
   return (
     <div className="flex flex-col items-center gap-2">
@@ -28,11 +28,11 @@ function ScoreGauge({ score }) {
   );
 }
 
-function SectionTitle({ icon: Icon, title, color = "text-blue-400" }) {
+function SectionTitle({ icon: Icon, title }) {
   return (
-    <div className={`flex items-center gap-2 pb-2 border-b border-slate-700 ${color}`}>
-      <Icon size={18} />
-      <h2 className="text-base font-bold">{title}</h2>
+    <div className="flex items-center gap-2 pb-3 border-b border-[var(--line)]">
+      <Icon size={18} className="text-accent-text" aria-hidden="true" />
+      <h2 className="section-title">{title}</h2>
     </div>
   );
 }
@@ -77,12 +77,13 @@ export default function SecurityReport() {
   };
 
   return (
-    <div className="p-6 space-y-5">
+    <div className="space-y-6 animate-fadeIn">
       {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="flex items-center gap-3">
-          <FileText size={22} className="text-blue-400" />
-          <h1 className="text-xl font-bold text-primary">Security Report</h1>
+      <div className="flex items-end justify-between flex-wrap gap-4">
+        <div>
+          <p className="eyebrow mb-2">Reporting</p>
+          <h1 className="page-title">Security report</h1>
+          <p className="page-subtitle">The full assessment of one scan: score, vulnerabilities, exploitability, attack paths and remediation.</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <select
@@ -170,7 +171,7 @@ export default function SecurityReport() {
 
           {/* Vulnerabilities */}
           <div className="card space-y-3">
-            <SectionTitle icon={AlertTriangle} title="Vulnerability Summary" color="text-orange-400" />
+            <SectionTitle icon={AlertTriangle} title="Vulnerability summary" />
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               {["CRITICAL", "HIGH", "MEDIUM", "LOW"].map((sev) => (
                 <div key={sev} className="rounded-lg p-3 text-center" style={{ background: SEV_COLOR[sev] + "20", border: `1px solid ${SEV_COLOR[sev]}40` }}>
@@ -188,7 +189,7 @@ export default function SecurityReport() {
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs">
                     <thead>
-                      <tr className="border-b border-slate-700">
+                      <tr className="border-b border-[var(--line)]">
                         {["CVE ID", "CVSS", "Service", "Port"].map((h) => (
                           <th key={h} className="text-left py-1.5 px-2 text-muted font-medium">{h}</th>
                         ))}
@@ -196,7 +197,7 @@ export default function SecurityReport() {
                     </thead>
                     <tbody>
                       {data.vulnerabilities.critical_cves.map((v) => (
-                        <tr key={v.id} className="border-b border-slate-800 hover:bg-slate-800/30">
+                        <tr key={v.id} className="border-b border-[var(--line)] hover:bg-[var(--surface-2)]">
                           <td className="py-1.5 px-2 font-mono text-red-300">{v.cve_id}</td>
                           <td className="py-1.5 px-2 text-orange-300 font-bold">{v.cvss}</td>
                           <td className="py-1.5 px-2 text-secondary">{v.affected_service || "—"}</td>
@@ -212,14 +213,14 @@ export default function SecurityReport() {
 
           {/* Exploitability */}
           <div className="card space-y-3">
-            <SectionTitle icon={ShieldCheck} title="Exploitability Assessment" color="text-red-400" />
+            <SectionTitle icon={ShieldCheck} title="Exploitability assessment" />
             <div className="flex flex-wrap gap-3">
               {[
                 { label: "Weaponized", val: data.exploitability?.weaponized, mat: "WEAPONIZED" },
                 { label: "Functional", val: data.exploitability?.functional, mat: "FUNCTIONAL" },
                 { label: "POC",        val: data.exploitability?.poc,        mat: "POC" },
               ].map(({ label, val, mat }) => (
-                <div key={label} className="flex items-center gap-2 bg-slate-800 rounded-lg px-3 py-2">
+                <div key={label} className="flex items-center gap-2 bg-[var(--surface-2)] rounded-lg px-3 py-2">
                   <ExploitabilityBadge maturity={mat} size="xs" />
                   <span className="text-sm font-bold text-primary">{val ?? 0}</span>
                 </div>
@@ -230,7 +231,7 @@ export default function SecurityReport() {
               <div className="overflow-x-auto mt-2">
                 <table className="w-full text-xs">
                   <thead>
-                    <tr className="border-b border-slate-700">
+                    <tr className="border-b border-[var(--line)]">
                       {["CVE ID", "Maturity", "Score", "Attack Type", "Lateral Mvmt"].map((h) => (
                         <th key={h} className="text-left py-1.5 px-2 text-muted font-medium">{h}</th>
                       ))}
@@ -238,8 +239,8 @@ export default function SecurityReport() {
                   </thead>
                   <tbody>
                     {data.exploitability.top.map((a) => (
-                      <tr key={a.id} className="border-b border-slate-800 hover:bg-slate-800/30">
-                        <td className="py-1.5 px-2 font-mono text-blue-300">{a.cve_id}</td>
+                      <tr key={a.id} className="border-b border-[var(--line)] hover:bg-[var(--surface-2)]">
+                        <td className="py-1.5 px-2 font-mono text-accent-text">{a.cve_id}</td>
                         <td className="py-1.5 px-2"><ExploitabilityBadge maturity={a.exploit_maturity} size="xs" /></td>
                         <td className="py-1.5 px-2 text-yellow-300 font-bold">{a.exploitability_score?.toFixed(1)}</td>
                         <td className="py-1.5 px-2 text-secondary">{a.attack_type}</td>
@@ -255,15 +256,15 @@ export default function SecurityReport() {
           {/* Attack Graph */}
           {data.attack_graph?.nodes > 0 && (
             <div className="card space-y-3">
-              <SectionTitle icon={Crosshair} title="Attack Graph" color="text-purple-400" />
+              <SectionTitle icon={Crosshair} title="Attack graph" />
               <div className="grid grid-cols-3 gap-3 text-center">
                 {[
                   { label: "Nodes", val: data.attack_graph.nodes },
                   { label: "Edges", val: data.attack_graph.edges },
                   { label: "Paths", val: data.attack_graph.paths },
                 ].map(({ label, val }) => (
-                  <div key={label} className="bg-slate-800 rounded-lg p-3">
-                    <p className="text-xl font-bold text-purple-300">{val}</p>
+                  <div key={label} className="bg-[var(--surface-2)] rounded-lg p-3">
+                    <p className="text-xl font-bold text-primary">{val}</p>
                     <p className="text-xs text-muted">{label}</p>
                   </div>
                 ))}
@@ -272,7 +273,7 @@ export default function SecurityReport() {
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs">
                     <thead>
-                      <tr className="border-b border-slate-700">
+                      <tr className="border-b border-[var(--line)]">
                         {["Entry", "Target", "Hops", "Score", "Severity"].map((h) => (
                           <th key={h} className="text-left py-1.5 px-2 text-muted">{h}</th>
                         ))}
@@ -280,7 +281,7 @@ export default function SecurityReport() {
                     </thead>
                     <tbody>
                       {data.attack_graph.top_paths.map((p) => (
-                        <tr key={p.id} className="border-b border-slate-800">
+                        <tr key={p.id} className="border-b border-[var(--line)]">
                           <td className="py-1.5 px-2 font-mono text-secondary">{p.entry_ip}</td>
                           <td className="py-1.5 px-2 font-mono text-secondary">{p.target_ip}</td>
                           <td className="py-1.5 px-2 text-secondary">{p.hop_count}</td>
@@ -301,7 +302,7 @@ export default function SecurityReport() {
 
           {/* Remediation */}
           <div className="card space-y-3">
-            <SectionTitle icon={Route} title={`Remediation Plan (${data.remediation?.total ?? 0} items)`} color="text-green-400" />
+            <SectionTitle icon={Route} title={`Remediation plan (${data.remediation?.total ?? 0} items)`} />
             {data.remediation?.items?.length > 0 ? (
               <div>
                 {data.remediation.items.map((r) => (
