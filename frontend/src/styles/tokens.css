@@ -26,6 +26,7 @@
   --viper-paper:   #fbf8f3;
   --viper-crimson:        #c01f3c;
   --viper-crimson-bright: #e4324f;
+  --viper-crimson-light:  #f0566b;   /* crimson for text on dark surfaces (AA) */
   --viper-crimson-deep:   #9f1932;
   --viper-green: #1a7a3a;
   --viper-gold:  #b8860b;
@@ -79,7 +80,7 @@
   --text: #16141a;
   --text-2: #3c3842;
   --text-3: #57525d;
-  --text-muted: #6b6670;
+  --text-muted: #605b65;   /* >= 5:1 on every light background, incl. the sidebar */
   --text-on-accent: #ffffff;
 
   --accent: var(--viper-crimson);
@@ -89,7 +90,7 @@
   --accent-line: rgba(192, 31, 60, 0.35);
 
   --success: var(--viper-green);
-  --success-text: var(--viper-green);
+  --success-text: #166331;   /* AA also on the green badge tint */
   --warning: var(--viper-gold);
   --warning-text: #7a5a06;
   --danger: var(--viper-crimson);
@@ -100,12 +101,13 @@
   --shadow-md: 0 6px 24px -8px rgba(22, 20, 26, 0.16);
   --shadow-lg: 0 18px 48px -16px rgba(22, 20, 26, 0.22);
 
-  /* Severity (used by charts, graphs and gauges) */
+  /* Severity (bars, gauges and severity-coloured numbers). Light-theme values
+     are dark enough to be read as text on cream (>= 4.5:1). */
   --sev-critical: #c01f3c;
-  --sev-high: #dc5f28;
-  --sev-medium: #b8860b;
-  --sev-low: #5b7699;
-  --sev-none: #77737c;
+  --sev-high: #933a18;
+  --sev-medium: #7a5a06;
+  --sev-low: #3b4d66;
+  --sev-none: #5a5660;
 
   /* ── 3. Legacy aliases ──────────────────────────────────────────────── */
   --color-bg-body: var(--bg);
@@ -148,20 +150,20 @@
   --text-3: #aaa5ad;
   --text-muted: #8d8a93;
 
-  --accent-text: var(--viper-crimson-bright);
+  --accent-text: var(--viper-crimson-light);   /* >= 4.9:1 on ink, cards and badges */
   --accent-soft: rgba(192, 31, 60, 0.14);
   --accent-line: rgba(228, 50, 79, 0.4);
 
   --success-text: #3fbf6a;
   --warning-text: #cfa22c;
-  --danger-text: var(--viper-crimson-bright);
+  --danger-text: var(--viper-crimson-light);
 
   --focus-ring: var(--viper-crimson-bright);
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
   --shadow-md: 0 8px 28px -10px rgba(0, 0, 0, 0.6);
   --shadow-lg: 0 24px 60px -20px rgba(0, 0, 0, 0.75);
 
-  --sev-critical: #e4324f;
+  --sev-critical: #f0566b;
   --sev-high: #ea7a45;
   --sev-medium: #cfa22c;
   --sev-low: #7690b0;
@@ -183,7 +185,7 @@
   --text: #16141a;
   --text-2: #3c3842;
   --text-3: #57525d;
-  --text-muted: #6b6670;
+  --text-muted: #605b65;
   --accent-text: var(--viper-crimson);
   background: var(--bg);
   color: var(--text);
@@ -198,7 +200,7 @@
   --text-2: #d6d2cb;
   --text-3: #aaa5ad;
   --text-muted: #8d8a93;
-  --accent-text: var(--viper-crimson-bright);
+  --accent-text: var(--viper-crimson-light);
   background: var(--bg);
   color: var(--text);
 }

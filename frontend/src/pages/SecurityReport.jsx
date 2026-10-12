@@ -151,17 +151,17 @@ export default function SecurityReport() {
               {/* Key risk callouts */}
               <div className="flex flex-wrap gap-2 mt-2">
                 {data.exploitability?.weaponized > 0 && (
-                  <span className="text-xs bg-red-900/40 border border-red-500 text-red-300 px-2 py-1 rounded">
+                  <span className="badge badge-red">
                     {data.exploitability.weaponized} Weaponized Exploit(s)
                   </span>
                 )}
                 {data.vulnerabilities?.by_severity?.CRITICAL > 0 && (
-                  <span className="text-xs bg-red-900/30 border border-red-700 text-red-300 px-2 py-1 rounded">
+                  <span className="badge badge-red">
                     {data.vulnerabilities.by_severity.CRITICAL} Critical CVE(s)
                   </span>
                 )}
                 {data.remediation?.immediate > 0 && (
-                  <span className="text-xs bg-orange-900/30 border border-orange-600 text-orange-300 px-2 py-1 rounded">
+                  <span className="badge badge-yellow">
                     {data.remediation.immediate} Immediate Action(s)
                   </span>
                 )}
