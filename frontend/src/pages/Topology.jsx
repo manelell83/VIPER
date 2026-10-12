@@ -43,12 +43,13 @@ export default function Topology() {
   useEffect(() => { loadTopology(selectedScan); }, [selectedScan]);
 
   return (
-    <div className="h-[calc(100vh-3rem)] flex flex-col gap-4 animate-fadeIn">
+    <div className="h-[calc(100vh-4rem)] flex flex-col gap-5 animate-fadeIn">
       {/* Header */}
-      <div className="flex items-center justify-between flex-shrink-0">
+      <div className="flex items-end justify-between flex-wrap gap-4 flex-shrink-0">
         <div>
-          <h1 className="text-2xl font-bold text-primary">Topology</h1>
-          <p className="text-sm text-muted mt-0.5">Live network graph visualization</p>
+          <p className="eyebrow mb-2">Analysis</p>
+          <h1 className="page-title">Topology</h1>
+          <p className="page-subtitle">Hosts discovered by a scan, coloured by their most severe CVE.</p>
         </div>
         <div className="flex items-center gap-3">
           {stats && (

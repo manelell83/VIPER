@@ -58,17 +58,13 @@ export default function AttackPaths() {
   }, {});
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6 animate-fadeIn">
+    <div className="max-w-5xl space-y-6 animate-fadeIn">
       {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
+      <div className="flex items-end justify-between flex-wrap gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-primary flex items-center gap-2">
-            <Shield size={22} className="text-orange-400" />
-            Attack Paths
-          </h1>
-          <p className="text-sm text-muted mt-1">
-            Ranked attack chains derived from real scan vulnerabilities
-          </p>
+          <p className="eyebrow mb-2">Analysis</p>
+          <h1 className="page-title">Attack paths</h1>
+          <p className="page-subtitle">Attack chains ranked by score: the higher, the easier and more damaging.</p>
         </div>
 
         <div className="flex items-center gap-3">
@@ -110,22 +106,14 @@ export default function AttackPaths() {
 
       {/* Filter row */}
       <div className="flex items-center gap-2 flex-wrap">
-        <Filter size={13} className="text-muted" />
-        {SEVERITIES.map((s) => (
-          <button
-            key={s}
-            onClick={() => setSeverityFilter(s)}
-            className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-colors ${
-              severityFilter === s
-                ? s === "ALL"
-                  ? "bg-blue-600 text-white"
-                  : "ring-1 ring-current text-primary"
-                : "text-tertiary hover:text-secondary"
-            }`}
-          >
-            {s}
-          </button>
-        ))}
+        <Filter size={13} className="text-muted" aria-hidden="true" />
+        <div className="segmented" role="group" aria-label="Filter by severity">
+          {SEVERITIES.map((s) => (
+            <button key={s} type="button" onClick={() => setSeverityFilter(s)} aria-pressed={severityFilter === s}>
+              {s}
+            </button>
+          ))}
+        </div>
         <span className="ml-auto text-xs text-muted">
           {filtered.length} path{filtered.length !== 1 ? "s" : ""}
         </span>
@@ -268,10 +256,10 @@ function PathFlow({ ips }) {
 }
 
 function _sevColor(sev) {
-  return sev === "CRITICAL" ? "#ef4444"
-    : sev === "HIGH" ? "#f97316"
-    : sev === "MEDIUM" ? "#eab308"
-    : "#3b82f6";
+  return sev === "CRITICAL" ? "var(--sev-critical)"
+    : sev === "HIGH" ? "var(--sev-high)"
+    : sev === "MEDIUM" ? "var(--sev-medium)"
+    : "var(--sev-low)";
 }
 
 function _detectType(vector = "") {
