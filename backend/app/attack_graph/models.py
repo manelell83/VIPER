@@ -1,5 +1,4 @@
 import json
-from datetime import datetime
 from uuid import uuid4
 
 from sqlalchemy import (
@@ -8,6 +7,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
+from app.core.timeutil import iso_utc, utcnow
 
 
 class AttackGraph(Base):
@@ -15,7 +15,7 @@ class AttackGraph(Base):
 
     id = Column(String, primary_key=True, default=lambda: str(uuid4()))
     scan_id = Column(String, ForeignKey("scan_sessions.id", ondelete="CASCADE"), nullable=False, unique=True)
-    generated_at = Column(DateTime, default=datetime.utcnow)
+    generated_at = Column(DateTime, default=utcnow)
     node_count = Column(Integer, default=0)
     edge_count = Column(Integer, default=0)
     path_count = Column(Integer, default=0)
@@ -31,7 +31,7 @@ class AttackGraph(Base):
         return {
             "id": self.id,
             "scan_id": self.scan_id,
-            "generated_at": self.generated_at.isoformat() if self.generated_at else None,
+            "generated_at": iso_utc(self.generated_at),
             "node_count": self.node_count,
             "edge_count": self.edge_count,
             "path_count": self.path_count,

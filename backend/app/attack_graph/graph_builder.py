@@ -6,7 +6,6 @@ All relationships are derived from real scan data — nothing is hardcoded.
 
 import json
 import logging
-from datetime import datetime
 from uuid import uuid4
 
 from sqlalchemy.orm import Session
@@ -15,6 +14,7 @@ from app.models.scan import ScanSession, Host
 from app.vulnerability_scanner.models import Vulnerability
 from app.attack_graph.models import AttackGraph, AttackNode, AttackEdge
 from app.attack_graph.attack_rules import evaluate_host_rules
+from app.core.timeutil import utcnow
 
 log = logging.getLogger(__name__)
 
@@ -36,7 +36,7 @@ def build_attack_graph(scan_id: str, db: Session) -> "AttackGraph | None":
     ag = AttackGraph(
         id=str(uuid4()),
         scan_id=scan_id,
-        generated_at=datetime.utcnow(),
+        generated_at=utcnow(),
     )
     db.add(ag)
     db.flush()

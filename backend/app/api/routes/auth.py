@@ -1,6 +1,5 @@
 """Authentication routes: login, current user, user creation (admin only)."""
 
-from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field, field_validator
@@ -10,6 +9,7 @@ from app.api.deps import get_current_user, require_admin
 from app.core.database import get_db
 from app.core.security import hash_password, verify_password, create_access_token
 from app.models.user import User, ROLES, ROLE_ANALYST
+from app.core.timeutil import utcnow
 
 router = APIRouter(tags=["Auth"])
 
@@ -71,7 +71,7 @@ def login(req: LoginRequest, db: Session = Depends(get_db)):
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User is inactive")
 
-    user.last_login = datetime.utcnow()
+    user.last_login = utcnow()
     db.commit()
 
     return {

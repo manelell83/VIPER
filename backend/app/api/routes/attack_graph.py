@@ -15,6 +15,7 @@ from app.attack_graph.models import AttackGraph, AttackNode, AttackEdge, AttackP
 from app.attack_graph.graph_builder import build_attack_graph
 from app.attack_graph.path_engine import generate_attack_paths
 from app.attack_graph.risk_paths import analyze_risk
+from app.core.timeutil import iso_utc
 
 log = logging.getLogger(__name__)
 router = APIRouter()
@@ -139,7 +140,7 @@ async def get_attack_graph(scan_id: str, db: Session = Depends(get_db)):
     return {
         "scan_id": scan_id,
         "graph_id": ag.id,
-        "generated_at": ag.generated_at.isoformat() if ag.generated_at else None,
+        "generated_at": iso_utc(ag.generated_at),
         "stats": {
             "nodes": ag.node_count,
             "edges": ag.edge_count,

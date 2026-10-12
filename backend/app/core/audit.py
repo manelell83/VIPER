@@ -7,7 +7,7 @@ is stored on the scan (who, when, exact statement) and written to the
 """
 
 import logging
-from datetime import datetime, timezone
+from app.core.timeutil import utcnow, iso_utc
 
 # Stored verbatim with every scan, so the audit trail shows exactly what was confirmed.
 AUTHORIZATION_STATEMENT = (
@@ -48,9 +48,9 @@ def configure_logging(audit_file: str) -> None:
 def record_scan_authorization(scan, username: str) -> None:
     """Stamp a scan with the user's authorization confirmation and log it."""
     scan.authorized_by = username
-    scan.authorized_at = datetime.now(timezone.utc).replace(tzinfo=None)   # stored as naive UTC
+    scan.authorized_at = utcnow()   # stored as naive UTC
     scan.authorization_statement = AUTHORIZATION_STATEMENT
     audit_log.info(
-        "scan authorized: user=%s scan_id=%s type=%s target=%s at=%sZ statement=%r",
-        username, scan.id, scan.type, scan.target, scan.authorized_at.isoformat(), AUTHORIZATION_STATEMENT,
+        "scan authorized: user=%s scan_id=%s type=%s target=%s at=%s statement=%r",
+        username, scan.id, scan.type, scan.target, iso_utc(scan.authorized_at), AUTHORIZATION_STATEMENT,
     )

@@ -14,7 +14,7 @@ Tests:
 
 import pytest
 from uuid import uuid4
-from datetime import datetime
+from app.core.timeutil import utcnow
 from sqlalchemy.orm import Session
 
 from app.models.scan import ScanSession, Host
@@ -32,7 +32,7 @@ class TestScanSessionModel:
             type="network",
             target="192.168.1.0/24",
             status="pending",
-            started_at=datetime.utcnow(),
+            started_at=utcnow(),
         )
         test_db.add(scan)
         test_db.commit()

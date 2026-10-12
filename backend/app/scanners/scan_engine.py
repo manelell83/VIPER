@@ -1,6 +1,5 @@
 import asyncio
 import logging
-from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 from typing import Callable, Awaitable
 
@@ -15,6 +14,7 @@ from app.vulnerability_scanner.vulnerability_engine import scan_all_hosts_vulner
 from app.attack_graph.graph_builder import build_attack_graph
 from app.attack_graph.path_engine import generate_attack_paths
 from app.exploitability.exploitability_engine import run_exploitability_analysis
+from app.core.timeutil import utcnow
 
 log = logging.getLogger(__name__)
 
@@ -242,13 +242,13 @@ async def run_domain_scan(scan_id: str, target: str, db: Session, emit: Emitter)
 
 def _complete(scan: ScanSession, db: Session):
     scan.status = "completed"
-    scan.completed_at = datetime.utcnow()
+    scan.completed_at = utcnow()
     db.commit()
 
 
 async def _fail(scan: ScanSession, db: Session, emit: Emitter, error: str):
     scan.status = "failed"
     scan.error = error
-    scan.completed_at = datetime.utcnow()
+    scan.completed_at = utcnow()
     db.commit()
     await emit({"type": "error", "message": error})
