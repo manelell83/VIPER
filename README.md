@@ -14,7 +14,7 @@ Each item below was checked in an end-to-end run against a real target (`127.0.0
 
 - **JWT authentication on every route.** Only `/auth/login`, `/health` and `/` are public. Requests without a valid token get `401`. There are two roles: `admin` (can create users and delete scans) and `analyst`.
 - **Port and service scanning with Nmap**, with service and version detection.
-- **CVE correlation** through the [NVD API 2.0](https://nvd.nist.gov/developers/vulnerabilities), with per-host and network risk scores.
+- **CVE correlation** through the [NVD API 2.0](https://nvd.nist.gov/developers/vulnerabilities): CPE matching when the product/version is known (flagged *Confirmed*), keyword fallback otherwise (*Weak match*). Each CVE is enriched with its **CISA KEV** flag (exploited in the wild) and **EPSS** score, with per-host and network risk scores.
 - **Attack-path graph** built with NetworkX, from an "external attacker" node through entry points and lateral movement.
 - **Real-time updates over WebSocket.** The socket authenticates with the JWT in its first message.
 - **JSON and PDF reports** (the PDF is generated with ReportLab).
@@ -122,9 +122,9 @@ Open http://localhost:5173 and sign in. The Vite dev server forwards `/api` and 
 
 ## Known limitations
 
-- **CVE correlation is keyword-based.** Services are matched to CVEs through NVD keyword searches (for example `openbsd openssh 8.2`), not through strict CPE matching. This produces false positives: in testing, old Windows RPC CVEs (2000–2004) were reported against a modern Windows 11 host. Treat the results as leads to investigate, not confirmed vulnerabilities.
-- **Exploit maturity is a heuristic.** Labels such as `WEAPONIZED`, `FUNCTIONAL` or `POC` don't come from a real exploit data source (for example EPSS, CISA KEV or Exploit-DB). For 26 well-known CVEs (EternalBlue, BlueKeep, …) the label comes from a hard-coded table. For every other CVE it is inferred from the CVSS score and vector. Treat it as an indication only.
+- **CVE correlation: CPE reduces false positives but does not eliminate them.** When Nmap identifies a product and version, CVEs are matched by CPE (for example `cpe:2.3:a:apache:http_server:2.2.8`) and shown as **Confirmed**. When the product or version is unknown (e.g. an unversioned "Microsoft Windows RPC" banner), a keyword search is used and the results are flagged **Weak match** — these may be false positives. So some noise remains for services VIPER cannot identify precisely; always check a weak match before acting on it.
+- **"Exploited in the world" is not "vulnerable here".** Each CVE carries a **CISA KEV** flag (confirmed exploited in the wild) and an **EPSS** score (exploitation probability) — both **real data**, not a heuristic. They describe the CVE globally, not whether a given host is actually vulnerable: a weak-match CVE can have a high EPSS and still be a false positive (e.g. the Windows RPC CVE-2003-0352 shows EPSS 0.98 on a modern host where it does not apply). The UI keeps these separate from the Confirmed/Weak match label.
+- **The Exploitability page still uses a maturity heuristic.** Its `WEAPONIZED` / `FUNCTIONAL` / `POC` labels are inferred from CVSS plus a small curated CVE table, superseded by the real KEV/EPSS signals above; reconciling that page with KEV/EPSS is planned for a later phase.
 - **WebSocket progress is incomplete.** The first events of a scan can be missed if the client connects after the scan has started, because events are not replayed. No progress events are sent during the Nmap phase (about 20 s). This is a design limitation.
 - **In Docker, LAN discovery and OS detection are not available.** The backend container sits on Docker's internal network and runs as an unprivileged user. Scans of an IP address or hostname work, but ARP discovery of the host's real LAN does not, and Nmap OS detection (`-O`, which needs root) is skipped. For LAN scans, run the backend locally.
 - **npm audit reports 7 advisories** (rated moderate and high) in the build-time tooling of Tailwind CSS 3 (`braces`, `micromatch`, `postcss-selector-parser`). They don't affect the code that ships to the browser: `npm audit --omit=dev` reports 0 vulnerabilities. Fixing them requires migrating to Tailwind 4.
-- **`datetime.utcnow()` deprecation warnings** still need to be replaced with timezone-aware datetimes.
