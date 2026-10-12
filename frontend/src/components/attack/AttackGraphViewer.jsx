@@ -42,6 +42,11 @@ const AG_STYLE = [
       "text-margin-y": 7,
       "text-max-width": "130px",
       "text-wrap": "wrap",
+      // Background behind labels so edges never run through the text
+      "text-background-color": CANVAS_BG,
+      "text-background-opacity": 0.9,
+      "text-background-padding": "3px",
+      "text-background-shape": "roundrectangle",
       shape: "data(shape)",
     },
   },
@@ -176,17 +181,18 @@ export default function AttackGraphViewer({ elements, onNodeSelect, highlightedP
 
     cy.add([...nodes, ...edges]);
 
+    // Hierarchical layout rooted at the attacker: the graph reads top to bottom,
+    // attacker -> entry points -> pivots -> targets.
     const layout = cy.layout({
-      name: "cose",
+      name: "breadthfirst",
+      directed: true,
+      roots: "node[type='ATTACKER']",
+      spacingFactor: 1.6,
+      avoidOverlap: true,
       // "end": positions are computed in one go, then nodes glide to them with a
-      // normal Cytoscape animation that stop() can cancel (the "during" mode runs
-      // its own frame loop that keeps going after the graph is destroyed).
+      // normal Cytoscape animation that stop() can cancel.
       animate: "end",
-      animationDuration: 700,
-      nodeRepulsion: 12000,
-      idealEdgeLength: 140,
-      gravity: 0.25,
-      numIter: 1000,
+      animationDuration: 500,
       fit: true,
       padding: 60,
     });
