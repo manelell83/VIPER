@@ -49,7 +49,7 @@ export default function Topology() {
         <div>
           <p className="eyebrow mb-2">Analysis</p>
           <h1 className="page-title">Topology</h1>
-          <p className="page-subtitle">Hosts discovered by a scan, coloured by their most severe CVE.</p>
+          <p className="page-subtitle">Hosts discovered by a scan, coloured by their inferred role; the ring shows the most severe CVE.</p>
         </div>
         <div className="flex items-center gap-3">
           {stats && (

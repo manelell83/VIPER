@@ -5,42 +5,46 @@ import {
   CANVAS_BG, LABEL_COLOR, LABEL_FONT, SELECTED, EDGE_DEFAULT, SEVERITY,
   safeDestroy, capZoom,
 } from "../../theme/graph";
-
-const NODE_COLORS = {
-  gateway: { bg: "#4a370a", border: "#cfa22c", label: "Gateway" },
-  host:    { bg: "#1e1d24", border: "#7690b0", label: "Host" },
-  target:  { bg: "#2a2830", border: "#c4bfb7", label: "Target" },
-};
+import { ROLE_META, ROLE_ORDER, roleMeta, roleIconDataUri } from "../../theme/roles";
 
 const CYTOSCAPE_STYLE = [
   {
     selector: "node",
     style: {
-      width: 52,
-      height: 52,
+      width: 50,
+      height: 50,
       "background-color": "data(bgColor)",
       "border-color": "data(borderColor)",
       "border-width": 2.5,
+      "background-image": "data(icon)",
+      "background-fit": "none",
+      "background-width": "24px",
+      "background-height": "24px",
+      "background-clip": "none",
       label: "data(label)",
       "text-valign": "bottom",
       "text-halign": "center",
       "font-size": "10px",
       "font-family": LABEL_FONT,
       color: LABEL_COLOR,
-      "text-margin-y": 7,
-      "text-max-width": "140px",
+      "text-margin-y": 8,
+      "text-max-width": "160px",
       "text-wrap": "wrap",
+      "text-background-color": CANVAS_BG,
+      "text-background-opacity": 0.75,
+      "text-background-padding": "2px",
+      "text-background-shape": "roundrectangle",
       "transition-property": "background-color, border-color, width, height",
       "transition-duration": "200ms",
     },
   },
   {
     selector: "node[type='gateway']",
-    style: { width: 66, height: 66, "border-width": 3, "font-weight": "bold" },
+    style: { width: 62, height: 62, "border-width": 3, "font-weight": "bold", "background-width": "28px", "background-height": "28px" },
   },
   {
     selector: "node:selected",
-    style: { "border-color": SELECTED, "border-width": 4, width: 62, height: 62 },
+    style: { "border-color": SELECTED, "border-width": 4, width: 58, height: 58 },
   },
   {
     selector: "edge",
@@ -106,17 +110,19 @@ export default function TopologyViewer({ elements, onNodeClick }) {
     cy.elements().remove();
 
     const nodes = (elements.nodes ?? []).map((n) => {
-      const type = n.data.type ?? "host";
-      const baseColors = NODE_COLORS[type] ?? NODE_COLORS.host;
-      const severity = n.data.max_severity;
-      const sevColors = type !== "gateway" && severity ? SEVERITY[severity] : null;
-      const colors = sevColors ?? baseColors;
+      // Fill + icon come from the host's inferred role; the border shows CVE
+      // severity when the host has vulnerabilities (role otherwise).
+      const role = n.data.role ?? (n.data.type === "gateway" ? "gateway" : "unknown");
+      const meta = roleMeta(role);
+      const severity = n.data.type !== "gateway" ? n.data.max_severity : null;
+      const sevColors = severity ? SEVERITY[severity] : null;
       return {
         ...n,
         data: {
           ...n.data,
-          bgColor: colors.bg,
-          borderColor: colors.border,
+          bgColor: meta.bg,
+          borderColor: sevColors ? sevColors.border : meta.color,
+          icon: roleIconDataUri(role),
           label: n.data.label + (n.data.vuln_count ? `\n${n.data.vuln_count} CVE${n.data.vuln_count > 1 ? "s" : ""}` : ""),
         },
       };
@@ -143,6 +149,12 @@ export default function TopologyViewer({ elements, onNodeClick }) {
     layout.run();
   }, [elements]);
 
+  // Every role present anywhere (including secondary roles of multi-role hosts).
+  const presentRoles = new Set();
+  for (const n of elements?.nodes ?? []) {
+    (n.data.roles ?? [n.data.role]).filter(Boolean).forEach((r) => presentRoles.add(r));
+  }
+
   const zoom = (factor) => cyRef.current?.zoom(cyRef.current.zoom() * factor);
   const fit = () => { cyRef.current?.fit(undefined, 50); capZoom(cyRef.current); };
   const reset = () => { cyRef.current?.reset(); fit(); };
@@ -165,10 +177,21 @@ export default function TopologyViewer({ elements, onNodeClick }) {
         {/* Node details */}
         {selected && (
           <div className="absolute top-3 left-3 z-10 glass rounded-xl p-3 max-w-xs animate-fadeIn text-xs"
-               style={{ background: "rgba(11, 11, 14, 0.85)", color: "#aaa5ad" }}>
+               style={{ background: "rgba(11, 11, 14, 0.9)", color: "#aaa5ad" }}>
             <p className="font-bold mb-1 font-mono" style={{ color: "#f5f3ef" }}>{selected.ip}</p>
             {selected.hostname && <p style={{ color: "#8d8a93" }}>{selected.hostname}</p>}
-            {selected.os && <p className="mt-1">{selected.os}</p>}
+            {/* Inferred role(s) */}
+            {selected.roles?.length > 0 && (
+              <div className="flex flex-wrap gap-1 mt-1.5">
+                {selected.roles.map((r) => (
+                  <span key={r} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded"
+                        style={{ background: roleMeta(r).bg, border: `1px solid ${roleMeta(r).color}`, color: "#d6d2cb" }}>
+                    {roleMeta(r).label}
+                  </span>
+                ))}
+              </div>
+            )}
+            {selected.os && <p className="mt-1.5">{selected.os}</p>}
             {selected.mac && <p className="font-mono mt-1" style={{ color: "#8d8a93" }}>{selected.mac}</p>}
             <p className="mt-1" style={{ color: "#98abc4" }}>{selected.open_ports ?? 0} open port(s)</p>
             {selected.vuln_count > 0 && (
@@ -200,21 +223,27 @@ export default function TopologyViewer({ elements, onNodeClick }) {
       </div>
 
       {/* Legend strip (below the canvas, so it never hides nodes) */}
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 px-4 py-3 text-xs"
-           style={{ borderTop: "1px solid #26252d", color: "#aaa5ad" }}>
-        {Object.values(NODE_COLORS).map(({ label, bg, border }) => (
-          <span key={label} className="inline-flex items-center gap-2">
-            <span className="w-3 h-3 rounded-full border-2" style={{ background: bg, borderColor: border }} aria-hidden="true" />
-            {label}
-          </span>
-        ))}
-        <span className="w-px h-4" style={{ background: "#26252d" }} aria-hidden="true" />
-        {Object.entries(SEVERITY).map(([sev, c]) => (
-          <span key={sev} className="inline-flex items-center gap-2">
-            <span className="w-3 h-3 rounded-full border-2" style={{ background: c.bg, borderColor: c.border }} aria-hidden="true" />
-            {sev.charAt(0) + sev.slice(1).toLowerCase()} CVEs
-          </span>
-        ))}
+      <div className="px-4 py-3 text-xs" style={{ borderTop: "1px solid #26252d", color: "#aaa5ad" }}>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          {ROLE_ORDER.filter((r) => presentRoles.has(r)).map((r) => (
+            <span key={r} className="inline-flex items-center gap-1.5" title={ROLE_META[r].label}>
+              <img src={roleIconDataUri(r, ROLE_META[r].color)} alt="" width="13" height="13" aria-hidden="true" />
+              {ROLE_META[r].label}
+            </span>
+          ))}
+          <span className="w-px h-4" style={{ background: "#26252d" }} aria-hidden="true" />
+          <span className="text-muted">Ring = CVE severity:</span>
+          {Object.entries(SEVERITY).map(([sev, c]) => (
+            <span key={sev} className="inline-flex items-center gap-1.5">
+              <span className="w-3 h-3 rounded-full border-2" style={{ background: "transparent", borderColor: c.border }} aria-hidden="true" />
+              {sev.charAt(0) + sev.slice(1).toLowerCase()}
+            </span>
+          ))}
+        </div>
+        <p className="mt-2 text-[11px] text-muted">
+          Roles are <span className="text-tertiary">inferred from observed services</span>, not certified
+          (e.g. an open port 53 does not prove an authoritative DNS server). A host can hold several roles.
+        </p>
       </div>
     </div>
   );
