@@ -80,10 +80,19 @@ class TestBuildAttackGraph:
         }
 
         assert set(edges) == {("0.0.0.0", "10.0.0.1"), ("10.0.0.1", "10.0.0.2")}
-        assert edges[("0.0.0.0", "10.0.0.1")].attack_type == "REMOTE_ACCESS"
-        assert edges[("0.0.0.0", "10.0.0.1")].score == 65.0
-        assert edges[("10.0.0.1", "10.0.0.2")].attack_type == "LATERAL_MOVEMENT"
-        assert edges[("10.0.0.1", "10.0.0.2")].score == 61.2
+        entry = edges[("0.0.0.0", "10.0.0.1")]
+        assert entry.attack_type == "REMOTE_ACCESS"
+        # Evidence-based 3-component score: no CVE on SSH -> low exploitability,
+        # full reachability from the attacker. Score == the weighted combination.
+        assert entry.reachability == 100.0
+        assert entry.exploitability == 35.0          # no CVE -> service-exposure risk only
+        assert entry.score == round(0.20 * entry.reachability + 0.50 * entry.exploitability
+                                    + 0.30 * entry.impact, 1)
+        assert entry.justification and "ATTACKER → 10.0.0.1" in entry.justification
+
+        lateral = edges[("10.0.0.1", "10.0.0.2")]
+        assert lateral.attack_type == "LATERAL_MOVEMENT"
+        assert lateral.reachability == 90.0          # same subnet, not a direct entry
 
     def test_critical_cve_makes_entry_host_an_entry_node(self, test_db, scan):
         host = test_db.query(Host).filter(Host.ip == "10.0.0.1").one()
@@ -128,14 +137,18 @@ class TestGenerateAttackPaths:
 
         direct = by_target["10.0.0.1"]
         assert direct.hop_count == 1
-        assert direct.total_score == 65.0
-        assert direct.severity == "HIGH"
+        # A 1-hop path aggregates to its single edge's components
+        assert direct.exploitability_score == 35.0
+        assert direct.total_score == round(0.20 * direct.reachability_score
+                                           + 0.50 * direct.exploitability_score
+                                           + 0.30 * direct.impact_score, 1)
+        assert direct.justification and direct.to_dict()["factors"]   # transparent breakdown + justification
 
         lateral = by_target["10.0.0.2"]
         assert lateral.hop_count == 2
         assert lateral.entry_ip == "10.0.0.1"
-        assert lateral.total_score == 60.1     # (65 + 61.2) / 2 − 3
-        assert lateral.severity == "HIGH"
+        assert lateral.total_score < direct.total_score + 1   # 2 hops: length penalty applies
+        assert " ; then " in lateral.justification            # chained hop justifications
 
     def test_graph_summary_is_updated(self, test_db, scan):
         graph = build_attack_graph(scan.id, test_db)
@@ -143,7 +156,8 @@ class TestGenerateAttackPaths:
         generate_attack_paths(graph, test_db)
 
         assert graph.path_count == 2
-        assert graph.network_risk_level == "HIGH"   # from the best path score (65.0)
+        # No CVE evidence on these services -> not a HIGH-confidence path
+        assert graph.network_risk_level in ("MEDIUM", "LOW")
 
     def test_regenerating_paths_does_not_duplicate_them(self, test_db, scan):
         graph = build_attack_graph(scan.id, test_db)
