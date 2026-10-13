@@ -17,6 +17,10 @@ python-nmap==0.7.1
 # CVE lookup (NVD API)
 httpx==0.28.1
 
+# Passive domain recon
+dnspython==2.9.0
+python-whois==0.9.6
+
 # Attack graph
 networkx==3.6.1   # 3.7+ requires Python 3.12; Docker/CI also use 3.11
 
