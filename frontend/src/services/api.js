@@ -66,6 +66,14 @@ export const reconApi = {
   get: (reconId) => API.get(`/recon/${reconId}`),
 };
 
+export const prioritizationApi = {
+  get: (scanId) => API.get(`/prioritization/${scanId}`),
+  generateNarrative: (scanId, useLlm) =>
+    API.post(`/prioritization/${scanId}/narrative`, { use_llm: useLlm === true }, { timeout: 90000 }),
+  setOverride: (scanId, vulnId, override) =>
+    API.patch(`/prioritization/${scanId}/items/${vulnId}`, override),
+};
+
 export const topologyApi = {
   get: (scanId) => API.get(`/topology/${scanId}`),
 };

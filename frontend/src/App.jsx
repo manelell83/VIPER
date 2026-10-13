@@ -4,6 +4,7 @@ import Dashboard from "./pages/Dashboard";
 import NetworkScan from "./pages/NetworkScan";
 import DomainScan from "./pages/DomainScan";
 import DomainRecon from "./pages/DomainRecon";
+import AIPrioritization from "./pages/AIPrioritization";
 import Topology from "./pages/Topology";
 import { HistoryList, ScanDetail } from "./pages/History";
 import Reports from "./pages/Reports";
@@ -61,6 +62,7 @@ export default function App() {
           <Route path="attack-graph" element={<AttackGraph />} />
           <Route path="attack-paths" element={<AttackPaths />} />
           <Route path="exploitability" element={<Exploitability />} />
+        <Route path="prioritization" element={<AIPrioritization />} />
           <Route path="security-report" element={<SecurityReport />} />
           <Route path="users" element={<Users />} />
           <Route path="*" element={<Navigate to="/app" replace />} />

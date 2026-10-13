@@ -11,7 +11,7 @@ produced it, each with its points and a short explanation. Nothing here calls
 an LLM - the optional AI layer only rephrases this output (see narrative.py).
 """
 
-from typing import Dict, List
+from typing import List
 
 from sqlalchemy.orm import Session
 

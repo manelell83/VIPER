@@ -2,7 +2,7 @@ import { Link, NavLink } from "react-router-dom";
 import {
   LayoutDashboard, Network, Globe, GitFork,
   FileText, History, Sun, Moon, AlertTriangle, Crosshair, Route,
-  ShieldAlert, ClipboardList, LogOut, UserPlus, Radar,
+  ShieldAlert, ClipboardList, LogOut, UserPlus, Radar, ListChecks,
 } from "lucide-react";
 import { useTheme } from "../../hooks/useTheme";
 import { getUser, clearSession } from "../../services/auth";
@@ -27,6 +27,7 @@ const NAV_GROUPS = [
       { to: "/app/attack-graph", icon: Crosshair, label: "Attack Graph" },
       { to: "/app/attack-paths", icon: Route, label: "Attack Paths" },
       { to: "/app/exploitability", icon: ShieldAlert, label: "Exploitability" },
+      { to: "/app/prioritization", icon: ListChecks, label: "AI Prioritization" },
     ],
   },
   {
