@@ -2,7 +2,7 @@ import { Link, NavLink } from "react-router-dom";
 import {
   LayoutDashboard, Network, Globe, GitFork,
   FileText, History, Sun, Moon, AlertTriangle, Crosshair, Route,
-  ShieldAlert, ClipboardList, LogOut, UserPlus,
+  ShieldAlert, ClipboardList, LogOut, UserPlus, Radar,
 } from "lucide-react";
 import { useTheme } from "../../hooks/useTheme";
 import { getUser, clearSession } from "../../services/auth";
@@ -16,6 +16,7 @@ const NAV_GROUPS = [
       { to: "/app", icon: LayoutDashboard, label: "Dashboard", end: true },
       { to: "/app/scan/network", icon: Network, label: "Network Scan" },
       { to: "/app/scan/domain", icon: Globe, label: "Domain Scan" },
+      { to: "/app/recon", icon: Radar, label: "Domain Recon" },
     ],
   },
   {

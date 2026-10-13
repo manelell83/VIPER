@@ -3,6 +3,7 @@ import AppShell from "./components/layout/AppShell";
 import Dashboard from "./pages/Dashboard";
 import NetworkScan from "./pages/NetworkScan";
 import DomainScan from "./pages/DomainScan";
+import DomainRecon from "./pages/DomainRecon";
 import Topology from "./pages/Topology";
 import { HistoryList, ScanDetail } from "./pages/History";
 import Reports from "./pages/Reports";
@@ -51,6 +52,7 @@ export default function App() {
           <Route index element={<Dashboard />} />
           <Route path="scan/network" element={<NetworkScan />} />
           <Route path="scan/domain" element={<DomainScan />} />
+        <Route path="recon" element={<DomainRecon />} />
           <Route path="topology" element={<Topology />} />
           <Route path="history" element={<HistoryList />} />
           <Route path="history/:id" element={<ScanDetail />} />

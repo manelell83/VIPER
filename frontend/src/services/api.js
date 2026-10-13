@@ -60,6 +60,12 @@ export const resultsApi = {
   delete: (scanId) => API.delete(`/results/${scanId}`),
 };
 
+export const reconApi = {
+  start: (target) => API.post("/recon", { target }),
+  list: () => API.get("/recon"),
+  get: (reconId) => API.get(`/recon/${reconId}`),
+};
+
 export const topologyApi = {
   get: (scanId) => API.get(`/topology/${scanId}`),
 };
