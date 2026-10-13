@@ -140,6 +140,7 @@ def _generate_advanced_pdf(scan_id: str, scan: ScanSession, db: Session) -> byte
         "WEAPONIZED":  C_RED,
         "FUNCTIONAL":  C_ORANGE,
         "POC":         C_YELLOW,
+        "UNKNOWN":     C_GRAY,
         "THEORETICAL": C_GRAY,
         "UNPROVEN":    C_GRAY,
     }
@@ -534,7 +535,7 @@ def _generate_advanced_pdf(scan_id: str, scan: ScanSession, db: Session) -> byte
         for a in assessments:
             mat_counts[a.exploit_maturity] = mat_counts.get(a.exploit_maturity, 0) + 1
         mat_rows = [["Exploit Maturity", "Count"]]
-        for m in ("WEAPONIZED", "FUNCTIONAL", "POC", "THEORETICAL", "UNPROVEN"):
+        for m in ("WEAPONIZED", "FUNCTIONAL", "POC", "UNKNOWN", "THEORETICAL", "UNPROVEN"):
             if mat_counts.get(m, 0) > 0:
                 mat_rows.append([m, str(mat_counts[m])])
         mat_tbl = Table(mat_rows, colWidths=[5*cm, 3*cm])
