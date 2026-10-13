@@ -21,6 +21,9 @@ httpx==0.28.1
 dnspython==2.9.0
 python-whois==0.9.6
 
+# Optional LLM layer for AI prioritization explanations (key via env; falls back to templates)
+anthropic==0.58.2
+
 # Attack graph
 networkx==3.6.1   # 3.7+ requires Python 3.12; Docker/CI also use 3.11
 

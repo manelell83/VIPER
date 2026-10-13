@@ -49,6 +49,14 @@ class Settings(BaseSettings):
     MAX_ATTACK_PATHS: int = 30
     MAX_ATTACK_HOPS: int = 6
 
+    # Optional LLM layer for AI-written prioritization explanations. The key is
+    # NEVER hardcoded: set LLM_API_KEY (or ANTHROPIC_API_KEY). With no key the
+    # app falls back to deterministic template explanations. The LLM only
+    # rephrases the computed data - it never produces scores.
+    LLM_PROVIDER: str = "anthropic"            # "anthropic" | "none"
+    LLM_API_KEY: str = ""                      # falls back to ANTHROPIC_API_KEY
+    LLM_MODEL: str = "claude-opus-5-5"         # overridable per deployment
+
     # Absolute path so the .env file is found whatever the working directory
     model_config = SettingsConfigDict(env_file=_BASE_DIR / ".env", extra="ignore")
 
