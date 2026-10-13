@@ -10,6 +10,7 @@ from app.api.routes import interfaces, scan, topology, results, reports
 from app.api.routes import vulnerabilities
 from app.api.routes import attack_graph
 from app.api.routes import exploitability
+from app.api.routes import recon
 from app.api.routes import auth
 from app.api import websocket as ws
 
@@ -19,6 +20,7 @@ import app.models.user                    # noqa: F401
 import app.vulnerability_scanner.models   # noqa: F401
 import app.attack_graph.models            # noqa: F401
 import app.exploitability.models          # noqa: F401
+import app.domain_recon.models            # noqa: F401
 
 
 @asynccontextmanager
@@ -60,6 +62,7 @@ app.include_router(reports.router,         prefix="/reports",         dependenci
 app.include_router(vulnerabilities.router, prefix="/vulnerabilities", dependencies=protected, tags=["Vulnerabilities"])
 app.include_router(attack_graph.router,    prefix="/attack-graph",    dependencies=protected, tags=["Attack Graph"])
 app.include_router(exploitability.router,  prefix="/exploitability",  dependencies=protected, tags=["Exploitability"])
+app.include_router(recon.router,           prefix="/recon",           dependencies=protected, tags=["Domain Recon"])
 app.include_router(ws.router,                                                  tags=["WebSocket"])
 
 
