@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.models.scan import ScanSession, Host
+from app.scanners.host_role import classify_host, ROLE_LABELS
 
 router = APIRouter()
 
@@ -36,11 +37,15 @@ async def get_topology(scan_id: str, db: Session = Depends(get_db)):
                 "hostname": "Gateway",
                 "os": "",
                 "open_ports": 0,
+                "role": "gateway",
+                "roles": ["gateway"],
             }
         })
 
     for host in hosts:
         node_id = f"host_{host.ip.replace('.', '_')}"
+        # Role inferred from the services actually observed (not certified)
+        role = classify_host(host.ports or [])
         nodes.append({
             "data": {
                 "id": node_id,
@@ -54,6 +59,8 @@ async def get_topology(scan_id: str, db: Session = Depends(get_db)):
                 "status": host.status,
                 "vuln_count": host.vuln_count,
                 "max_severity": host.max_severity(),
+                "role": role["primary"],
+                "roles": role["roles"],
             }
         })
 
@@ -70,6 +77,9 @@ async def get_topology(scan_id: str, db: Session = Depends(get_db)):
     return {
         "scan_id": scan_id,
         "elements": {"nodes": nodes, "edges": edges},
+        "role_labels": ROLE_LABELS,
+        "role_note": "Roles are inferred from the services observed on each host, not certified "
+                     "(e.g. an open port 53 does not prove an authoritative DNS server).",
         "stats": {
             "nodes": len(nodes),
             "edges": len(edges),
