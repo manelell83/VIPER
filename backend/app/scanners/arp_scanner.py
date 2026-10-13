@@ -1,31 +1,59 @@
+import logging
 import socket
-import struct
 import subprocess
 import platform
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
+
+from app.scanners.capabilities import get_capabilities
+
+log = logging.getLogger(__name__)
 
 
-def arp_scan(subnet: str) -> List[Dict[str, Any]]:
+def discover_hosts(subnet: str, interface_ip: str) -> Dict[str, Any]:
+    """Find the live hosts of `subnet`, reached through the interface `interface_ip`.
+
+    Returns {"hosts": [...], "method": "arp" | "ping", "note": str | None}.
+    ARP needs admin rights (and Npcap on Windows). When it cannot run, a ping
+    sweep of the same subnet is used and `note` says why: nothing is invented
+    and the fallback is never silent.
     """
-    Perform ARP scan on the given subnet.
-    Uses Scapy when available (requires Npcap on Windows), falls back to
-    OS-native ARP ping sweep via subprocess.
-    """
+    caps = get_capabilities()
+    if caps["discovery_method"] != "arp":
+        reasons = "; ".join(p["message"] for p in caps["problems"] if p["id"] in ("admin", "npcap", "pcap"))
+        return {"hosts": _fallback_arp_scan(subnet), "method": "ping",
+                "note": f"ARP discovery unavailable ({reasons}) - ping sweep used instead."}
     try:
-        return _scapy_arp_scan(subnet)
-    except Exception:
-        return _fallback_arp_scan(subnet)
+        return {"hosts": _scapy_arp_scan(subnet, interface_ip), "method": "arp", "note": None}
+    except Exception as exc:
+        log.warning("ARP discovery failed on %s: %s", subnet, exc)
+        return {"hosts": _fallback_arp_scan(subnet), "method": "ping",
+                "note": "ARP discovery failed on this interface - ping sweep used instead."}
 
 
-def _scapy_arp_scan(subnet: str) -> List[Dict[str, Any]]:
+def _scapy_interface(interface_ip: str) -> Optional[Any]:
+    """The Scapy interface that owns `interface_ip`, or None."""
+    from scapy.all import conf
+    for iface in conf.ifaces.values():
+        if getattr(iface, "ip", None) == interface_ip:
+            return iface
+    return None
+
+
+def _scapy_arp_scan(subnet: str, interface_ip: str) -> List[Dict[str, Any]]:
     from scapy.all import ARP, Ether, srp, conf
     conf.verb = 0
+
+    # Send only on the interface the user chose. Without iface=, Scapy uses the
+    # default route's interface, which can be a different (unauthorised) network.
+    iface = _scapy_interface(interface_ip)
+    if iface is None:
+        raise RuntimeError(f"no capture interface owns {interface_ip}")
 
     arp_request = ARP(pdst=subnet)
     broadcast = Ether(dst="ff:ff:ff:ff:ff:ff")
     packet = broadcast / arp_request
 
-    answered, _ = srp(packet, timeout=3, verbose=0)
+    answered, _ = srp(packet, iface=iface, timeout=3, verbose=0)
 
     hosts = []
     for sent, received in answered:

@@ -1,9 +1,9 @@
 import json
-from datetime import datetime
 from uuid import uuid4
 from sqlalchemy import Column, String, DateTime, Text, ForeignKey, Integer
 from sqlalchemy.orm import relationship
 from app.core.database import Base
+from app.core.timeutil import iso_utc, utcnow
 
 
 class ScanSession(Base):
@@ -15,8 +15,19 @@ class ScanSession(Base):
     interface = Column(String, nullable=True)       # interface name for network scans
     status = Column(String, default="pending")      # pending|running|completed|failed
     error = Column(Text, nullable=True)
-    started_at = Column(DateTime, default=datetime.utcnow)
+    started_at = Column(DateTime, default=utcnow)
     completed_at = Column(DateTime, nullable=True)
+
+    # Authorization confirmation (see app/core/audit.py): who confirmed they may
+    # scan this target, when (UTC), and the exact statement they confirmed.
+    authorized_by = Column(String, nullable=True)
+    authorized_at = Column(DateTime, nullable=True)
+    authorization_statement = Column(Text, nullable=True)
+
+    # Network scans: how live hosts were found ("arp" or "ping") and why, if
+    # ARP could not be used
+    discovery_method = Column(String, nullable=True)
+    discovery_note = Column(Text, nullable=True)
 
     hosts = relationship("Host", back_populates="scan", cascade="all, delete-orphan")
 
@@ -28,9 +39,15 @@ class ScanSession(Base):
             "interface": self.interface,
             "status": self.status,
             "error": self.error,
-            "started_at": self.started_at.isoformat() if self.started_at else None,
-            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+            "started_at": iso_utc(self.started_at),
+            "completed_at": iso_utc(self.completed_at),
             "hosts_count": len(self.hosts),
+            "authorization": {
+                "by": self.authorized_by,
+                "at": iso_utc(self.authorized_at),
+                "statement": self.authorization_statement,
+            },
+            "discovery": {"method": self.discovery_method, "note": self.discovery_note},
         }
 
 
@@ -41,12 +58,13 @@ class Host(Base):
     scan_id = Column(String, ForeignKey("scan_sessions.id"), nullable=False)
     ip = Column(String, nullable=False)
     mac = Column(String, nullable=True)
+    mac_vendor = Column(String, nullable=True)     # from the IEEE OUI list (offline)
     hostname = Column(String, nullable=True)
     os = Column(String, nullable=True)
     os_accuracy = Column(Integer, nullable=True)
     status = Column(String, default="up")
     ports_json = Column(Text, default="[]")
-    discovered_at = Column(DateTime, default=datetime.utcnow)
+    discovered_at = Column(DateTime, default=utcnow)
 
     scan = relationship("ScanSession", back_populates="hosts")
     vulnerabilities = relationship(
@@ -81,6 +99,7 @@ class Host(Base):
             "scan_id": self.scan_id,
             "ip": self.ip,
             "mac": self.mac,
+            "mac_vendor": self.mac_vendor,
             "hostname": self.hostname,
             "os": self.os,
             "os_accuracy": self.os_accuracy,
@@ -89,7 +108,7 @@ class Host(Base):
             "open_ports_count": self.open_ports_count,
             "vuln_count": self.vuln_count,
             "max_severity": self.max_severity(),
-            "discovered_at": self.discovered_at.isoformat() if self.discovered_at else None,
+            "discovered_at": iso_utc(self.discovered_at),
         }
 
     def _max_severity(self) -> str:

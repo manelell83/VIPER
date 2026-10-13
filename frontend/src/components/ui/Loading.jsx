@@ -1,7 +1,7 @@
 export function Spinner({ size = 20, className = "" }) {
   return (
     <svg
-      className={`animate-spin text-blue-500 ${className}`}
+      className={`animate-spin text-accent-text ${className}`}
       width={size}
       height={size}
       viewBox="0 0 24 24"
@@ -28,10 +28,10 @@ export function ProgressBar({ value = 0, animated = false }) {
   return (
     <div className="w-full h-2 rounded-full overflow-hidden" style={{ background: "var(--color-border)" }}>
       {animated && value === 0 ? (
-        <div className="h-full w-1/3 bg-blue-500 rounded-full animate-progress" />
+        <div className="h-full w-1/3 bg-accent rounded-full animate-progress" />
       ) : (
         <div
-          className="h-full bg-blue-500 rounded-full transition-all duration-500"
+          className="h-full bg-accent rounded-full transition-all duration-500"
           style={{ width: `${Math.min(100, Math.max(0, value))}%` }}
         />
       )}

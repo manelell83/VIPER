@@ -2,11 +2,13 @@ import { useEffect, useState, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Shield, AlertTriangle, RefreshCw, Wifi } from "lucide-react";
 import VulnerabilityTable from "../components/vulnerabilities/VulnerabilityTable";
+import { ThreatLegend } from "../components/vulnerabilities/ThreatBadges";
 import RiskCard from "../components/vulnerabilities/RiskCard";
 import SeverityBadge from "../components/vulnerabilities/SeverityBadge";
 import { LoadingOverlay } from "../components/ui/Loading";
 import { resultsApi } from "../services/api";
 import API from "../services/api";
+import PageHeader from "../components/ui/PageHeader";
 
 export default function Vulnerabilities() {
   const [params] = useSearchParams();
@@ -71,19 +73,12 @@ export default function Vulnerabilities() {
   }, {});
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6 animate-fadeIn">
-      {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-primary flex items-center gap-2">
-            <Shield size={22} className="text-blue-500" />
-            Vulnerability Assessment
-          </h1>
-          <p className="text-sm text-muted mt-1">
-            Real CVE correlation via NVD API — dynamic, not simulated
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
+    <div className="space-y-6 animate-fadeIn">
+      <PageHeader
+        eyebrow="Analysis"
+        title="Vulnerabilities"
+        subtitle="CVEs matched to the detected services. Confirmed = matched by CPE (product + version); weak = keyword only. KEV and EPSS show real-world exploitation, not whether this host is vulnerable."
+      >
           <select
             className="input-field max-w-[240px] text-sm"
             value={selectedScan}
@@ -99,8 +94,7 @@ export default function Vulnerabilities() {
           <button className="btn-icon" onClick={load} title="Refresh">
             <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
           </button>
-        </div>
-      </div>
+      </PageHeader>
 
       {/* Global stats row */}
       {stats && (
@@ -146,7 +140,7 @@ export default function Vulnerabilities() {
 
               {/* Top risky hosts */}
               <div className="lg:col-span-2 card">
-                <h2 className="text-sm font-semibold text-primary mb-3">Top Risky Hosts</h2>
+                <h2 className="section-title mb-3">Top risky hosts</h2>
                 {riskData.hosts?.length === 0 ? (
                   <p className="text-sm text-muted">No risk data available.</p>
                 ) : (
@@ -166,9 +160,9 @@ export default function Vulnerabilities() {
           {/* CVE Table */}
           <div className="card">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-sm font-semibold text-primary">
-                CVE Findings
-                <span className="ml-2 badge badge-blue">{vulns.length}</span>
+              <h2 className="section-title flex items-center gap-2">
+                CVE findings
+                <span className="badge badge-gray">{vulns.length}</span>
               </h2>
             </div>
 
@@ -180,7 +174,12 @@ export default function Vulnerabilities() {
                   or NVD returned no results for the detected versions.</p>
               </div>
             ) : (
-              <VulnerabilityTable vulnerabilities={vulns} showHostColumn />
+              <>
+                <ThreatLegend />
+                <div className="mt-4">
+                  <VulnerabilityTable vulnerabilities={vulns} showHostColumn />
+                </div>
+              </>
             )}
           </div>
         </div>
@@ -191,12 +190,12 @@ export default function Vulnerabilities() {
 
 function HostRiskRow({ host }) {
   const levelColor = {
-    CRITICAL: "#ef4444",
-    HIGH: "#f97316",
-    MEDIUM: "#eab308",
-    LOW: "#3b82f6",
-    NONE: "#6b7280",
-  }[host.level] ?? "#6b7280";
+    CRITICAL: "var(--sev-critical)",
+    HIGH: "var(--sev-high)",
+    MEDIUM: "var(--sev-medium)",
+    LOW: "var(--sev-low)",
+    NONE: "var(--sev-none)",
+  }[host.level] ?? "var(--sev-none)";
 
   return (
     <div className="flex items-center gap-3 rounded-lg p-2.5" style={{ background: "var(--color-bg-surface-hover)" }}>

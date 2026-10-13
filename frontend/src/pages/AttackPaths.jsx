@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, Fragment } from "react";
 import { useSearchParams, Link } from "react-router-dom";
-import { Shield, ChevronDown, ChevronUp, ArrowRight, Filter, RefreshCw, ExternalLink } from "lucide-react";
+import { Shield, ChevronDown, ChevronUp, ArrowRight, Filter, RefreshCw, ExternalLink, Info } from "lucide-react";
 import SeverityBadge from "../components/vulnerabilities/SeverityBadge";
 import { LoadingOverlay } from "../components/ui/Loading";
 import { resultsApi } from "../services/api";
@@ -8,13 +8,45 @@ import API from "../services/api";
 
 const SEVERITIES = ["ALL", "CRITICAL", "HIGH", "MEDIUM", "LOW"];
 
-const ATTACK_TYPE_LABELS = {
-  REMOTE_ACCESS:        { label: "Remote Access",        color: "text-red-400 bg-red-500/10" },
-  LATERAL_MOVEMENT:     { label: "Lateral Movement",     color: "text-orange-400 bg-orange-500/10" },
-  PRIVILEGE_ESCALATION: { label: "Privilege Escalation", color: "text-purple-400 bg-purple-500/10" },
-  DATA_ACCESS:          { label: "Data Access",           color: "text-yellow-400 bg-yellow-500/10" },
-  PERSISTENCE:          { label: "Persistence",           color: "text-gray-400 bg-gray-500/10" },
-};
+const FACTOR_COLOR = { reachability: "#a78bfa", exploitability: "#ef4444", impact: "#34d399", hop_penalty: "#64748b" };
+
+// 3-component breakdown: value bars (0-100) with the documented weight.
+function PathBreakdown({ factors }) {
+  return (
+    <div className="space-y-1.5">
+      {factors.map((f) => (
+        <div key={f.key} className="flex items-center gap-2 text-xs">
+          <span className="w-56 flex-shrink-0 text-tertiary truncate" title={f.label}>
+            {f.label}{f.weight && f.key !== "hop_penalty" ? ` · ×${f.weight}` : ""}
+          </span>
+          <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ background: "var(--surface-2)" }}>
+            <div className="h-full rounded-full" style={{
+              width: `${Math.min(100, Math.abs(f.value))}%`,
+              background: FACTOR_COLOR[f.key] ?? "var(--accent)",
+            }} />
+          </div>
+          <span className="w-10 text-right font-mono text-secondary">{f.value}</span>
+          <span className="w-64 flex-shrink-0 text-muted truncate" title={f.detail}>{f.detail}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function MitreTags({ mitre }) {
+  if (!mitre?.length) return null;
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {mitre.map((t) => (
+        <a key={t.id} href={`https://attack.mitre.org/techniques/${t.id.replace(".", "/")}/`}
+           target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}
+           className="badge badge-gray hover:underline" title={t.name}>
+          {t.id} · {t.name}
+        </a>
+      ))}
+    </div>
+  );
+}
 
 export default function AttackPaths() {
   const [params] = useSearchParams();
@@ -33,14 +65,14 @@ export default function AttackPaths() {
       setScans(completed);
       if (!selectedScan && completed.length > 0) setSelectedScan(completed[0].id);
     });
-  }, []);
+  }, []);   // eslint-disable-line react-hooks/exhaustive-deps
 
   const load = useCallback(() => {
+    // Always scope to one scan: paths across scans each start from their own
+    // ATTACKER node and must not be mixed.
+    if (!selectedScan) { setPaths([]); return; }
     setLoading(true);
-    const url = selectedScan
-      ? `/attack-graph/paths?scan_id=${selectedScan}`
-      : "/attack-graph/paths";
-    API.get(url)
+    API.get(`/attack-graph/paths?scan_id=${selectedScan}`)
       .then((res) => setPaths(res.paths ?? []))
       .catch(() => setPaths([]))
       .finally(() => setLoading(false));
@@ -48,59 +80,43 @@ export default function AttackPaths() {
 
   useEffect(() => { load(); }, [load]);
 
-  const filtered = severityFilter === "ALL"
-    ? paths
-    : paths.filter((p) => p.severity === severityFilter);
-
-  const bySev = paths.reduce((acc, p) => {
-    acc[p.severity] = (acc[p.severity] || 0) + 1;
-    return acc;
-  }, {});
+  const filtered = severityFilter === "ALL" ? paths : paths.filter((p) => p.severity === severityFilter);
+  const bySev = paths.reduce((acc, p) => { acc[p.severity] = (acc[p.severity] || 0) + 1; return acc; }, {});
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6 animate-fadeIn">
-      {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
+    <div className="max-w-5xl space-y-6 animate-fadeIn">
+      <div className="flex items-end justify-between flex-wrap gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-primary flex items-center gap-2">
-            <Shield size={22} className="text-orange-400" />
-            Attack Paths
-          </h1>
-          <p className="text-sm text-muted mt-1">
-            Ranked attack chains derived from real scan vulnerabilities
-          </p>
+          <p className="eyebrow mb-2">Analysis</p>
+          <h1 className="page-title">Attack paths</h1>
+          <p className="page-subtitle">Chains ranked by an evidence-based score. Each path is justified from the real scan data — reachability, hop exploitability (KEV/EPSS/CPE), and impact.</p>
         </div>
-
         <div className="flex items-center gap-3">
-          <select
-            className="input-field max-w-[240px] text-sm"
-            value={selectedScan}
-            onChange={(e) => setSelectedScan(e.target.value)}
-          >
-            <option value="">All scans</option>
+          <select className="input-field max-w-[240px] text-sm" value={selectedScan}
+                  onChange={(e) => setSelectedScan(e.target.value)}>
+            <option value="">Select a scan…</option>
             {scans.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.type} · {s.target} · {new Date(s.started_at).toLocaleDateString()}
-              </option>
+              <option key={s.id} value={s.id}>{s.type} · {s.target} · {new Date(s.started_at).toLocaleDateString()}</option>
             ))}
           </select>
-          <button className="btn-icon" onClick={load} title="Refresh">
-            <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
-          </button>
+          <button className="btn-icon" onClick={load} title="Refresh"><RefreshCw size={15} className={loading ? "animate-spin" : ""} /></button>
         </div>
       </div>
 
-      {/* Severity stats */}
+      <div className="rounded-lg p-3 text-xs flex gap-3" style={{ background: "var(--surface-2)", border: "1px solid var(--line)" }}>
+        <Info size={15} className="flex-shrink-0 mt-0.5 text-tertiary" aria-hidden="true" />
+        <p className="text-tertiary">
+          This is a <span className="text-secondary font-semibold">heuristic, evidence-based</span> model — not a formal
+          attack graph (e.g. MulVAL). It ranks plausible paths from real evidence for you to review; it does not prove
+          reachability or chain preconditions. Score = 0.20·reachability + 0.50·exploitability + 0.30·impact.
+        </p>
+      </div>
+
       {paths.length > 0 && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {["CRITICAL", "HIGH", "MEDIUM", "LOW"].map((sev) => (
-            <button
-              key={sev}
-              onClick={() => setSeverityFilter(sev === severityFilter ? "ALL" : sev)}
-              className={`card-sm text-left transition-all ${
-                severityFilter === sev ? "ring-1 ring-current" : "hover:ring-1 hover:ring-current/20"
-              }`}
-            >
+            <button key={sev} onClick={() => setSeverityFilter(sev === severityFilter ? "ALL" : sev)}
+                    className={`card-sm text-left transition-all ${severityFilter === sev ? "ring-1 ring-current" : "hover:ring-1 hover:ring-current/20"}`}>
               <p className="text-xl font-bold text-primary">{bySev[sev] ?? 0}</p>
               <SeverityBadge severity={sev} />
             </button>
@@ -108,30 +124,16 @@ export default function AttackPaths() {
         </div>
       )}
 
-      {/* Filter row */}
       <div className="flex items-center gap-2 flex-wrap">
-        <Filter size={13} className="text-muted" />
-        {SEVERITIES.map((s) => (
-          <button
-            key={s}
-            onClick={() => setSeverityFilter(s)}
-            className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-colors ${
-              severityFilter === s
-                ? s === "ALL"
-                  ? "bg-blue-600 text-white"
-                  : "ring-1 ring-current text-primary"
-                : "text-tertiary hover:text-secondary"
-            }`}
-          >
-            {s}
-          </button>
-        ))}
-        <span className="ml-auto text-xs text-muted">
-          {filtered.length} path{filtered.length !== 1 ? "s" : ""}
-        </span>
+        <Filter size={13} className="text-muted" aria-hidden="true" />
+        <div className="segmented" role="group" aria-label="Filter by severity">
+          {SEVERITIES.map((s) => (
+            <button key={s} type="button" onClick={() => setSeverityFilter(s)} aria-pressed={severityFilter === s}>{s}</button>
+          ))}
+        </div>
+        <span className="ml-auto text-xs text-muted">{filtered.length} path{filtered.length !== 1 ? "s" : ""}</span>
       </div>
 
-      {/* Path list */}
       <div className="card">
         {loading ? (
           <LoadingOverlay message="Loading attack paths…" />
@@ -141,106 +143,104 @@ export default function AttackPaths() {
             <p>No attack paths found.</p>
             <p className="text-xs mt-1">
               Complete a network scan first, then visit the{" "}
-              <Link to="/attack-graph" className="text-info hover:underline">Attack Graph</Link> page.
+              <Link to="/app/attack-graph" className="text-info hover:underline">Attack Graph</Link> page.
             </p>
           </div>
         ) : (
           <div className="space-y-2">
             {filtered.map((path) => (
-              <Fragment key={path.id}>
-                <div
-                  className="rounded-xl border border-[var(--color-border)] cursor-pointer transition-all hover:border-[var(--color-border-hover)]"
-                  style={{ background: expanded === path.id ? "var(--color-bg-surface-hover)" : undefined }}
-                  onClick={() => setExpanded(expanded === path.id ? null : path.id)}
-                >
-                  {/* Row */}
-                  <div className="flex items-center gap-3 p-3">
-                    {/* Score */}
-                    <div className="w-12 text-center flex-shrink-0">
-                      <p className="text-lg font-bold" style={{ color: _sevColor(path.severity) }}>
-                        {path.total_score?.toFixed(0)}
-                      </p>
-                      <p className="text-[10px] text-muted">score</p>
+              <div key={path.id}
+                   className="rounded-xl border border-[var(--color-border)] cursor-pointer transition-all hover:border-[var(--color-border-hover)]"
+                   style={{ background: expanded === path.id ? "var(--color-bg-surface-hover)" : undefined }}
+                   onClick={() => setExpanded(expanded === path.id ? null : path.id)}>
+                <div className="flex items-center gap-3 p-3">
+                  <div className="w-12 text-center flex-shrink-0">
+                    <p className="text-lg font-bold" style={{ color: _sevColor(path.severity) }}>{path.total_score?.toFixed(0)}</p>
+                    <p className="text-[10px] text-muted">score</p>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <SeverityBadge severity={path.severity} />
+                      <span className="text-xs text-muted">{path.hop_count} hop{path.hop_count !== 1 ? "s" : ""}</span>
                     </div>
+                    <PathFlow ips={path.path_ips ?? []} />
+                    {path.justification && (
+                      <p className="text-xs text-tertiary mt-1 truncate" title={path.justification}>{path.justification}</p>
+                    )}
+                  </div>
+                  {path.cve_ids?.length > 0 && (
+                    <span className="text-xs text-orange-400 flex-shrink-0">{path.cve_ids.length} CVE{path.cve_ids.length !== 1 ? "s" : ""}</span>
+                  )}
+                  {expanded === path.id ? <ChevronUp size={13} className="text-muted flex-shrink-0" /> : <ChevronDown size={13} className="text-muted flex-shrink-0" />}
+                </div>
 
-                    {/* Path flow */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5 mb-1">
-                        <SeverityBadge severity={path.severity} />
-                        <span className="text-xs text-muted">{path.hop_count} hop{path.hop_count !== 1 ? "s" : ""}</span>
+                {expanded === path.id && (
+                  <div className="border-t border-[var(--color-border)] px-4 pb-4 space-y-4" onClick={(e) => e.stopPropagation()}>
+                    {/* Why (justification) */}
+                    {path.justification && (
+                      <div className="mt-3">
+                        <p className="text-xs font-semibold text-muted uppercase tracking-wider mb-1">Why this path</p>
+                        <p className="text-sm text-secondary leading-relaxed">{path.justification}</p>
                       </div>
-                      <PathFlow ips={path.path_ips ?? []} />
-                    </div>
-
-                    {/* CVE count */}
-                    {path.cve_ids?.length > 0 && (
-                      <span className="text-xs text-orange-400 flex-shrink-0">
-                        {path.cve_ids.length} CVE{path.cve_ids.length !== 1 ? "s" : ""}
-                      </span>
                     )}
 
-                    {expanded === path.id
-                      ? <ChevronUp size={13} className="text-muted flex-shrink-0" />
-                      : <ChevronDown size={13} className="text-muted flex-shrink-0" />
-                    }
-                  </div>
-
-                  {/* Expanded */}
-                  {expanded === path.id && (
-                    <div className="border-t border-[var(--color-border)] px-4 pb-4 space-y-4">
-                      {/* Attack vectors */}
-                      {path.attack_vectors?.length > 0 && (
-                        <div className="mt-3">
-                          <p className="text-xs font-semibold text-muted uppercase tracking-wider mb-2">Attack Chain</p>
-                          <div className="space-y-2">
-                            {path.attack_vectors.map((v, i) => {
-                              const typeKey = _detectType(v);
-                              const cfg = ATTACK_TYPE_LABELS[typeKey] || ATTACK_TYPE_LABELS.PERSISTENCE;
-                              return (
-                                <div key={i} className="flex items-start gap-2">
-                                  <span className="text-xs text-muted font-mono mt-0.5 w-4">{i + 1}.</span>
-                                  <span className={`text-xs px-2 py-0.5 rounded-md ${cfg.color}`}>{v}</span>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* CVEs */}
-                      {path.cve_ids?.length > 0 && (
-                        <div>
-                          <p className="text-xs font-semibold text-muted uppercase tracking-wider mb-2">CVEs Involved</p>
-                          <div className="flex flex-wrap gap-2">
-                            {path.cve_ids.map((cve) => (
-                              <a
-                                key={cve}
-                                href={`https://nvd.nist.gov/vuln/detail/${cve}`}
-                                target="_blank"
-                                rel="noreferrer"
-                                onClick={(e) => e.stopPropagation()}
-                                className="text-xs font-mono text-info hover:underline flex items-center gap-1"
-                              >
-                                {cve} <ExternalLink size={9} />
-                              </a>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Entry / target */}
-                      <div className="flex items-center justify-between text-xs text-muted">
-                        <span>
-                          Entry: <span className="font-mono text-secondary">{path.entry_ip}</span>
-                        </span>
-                        <span>
-                          Target: <span className="font-mono text-red-400">{path.target_ip}</span>
-                        </span>
+                    {/* Transparent score breakdown */}
+                    {path.factors?.length > 0 && (
+                      <div>
+                        <p className="text-xs font-semibold text-muted uppercase tracking-wider mb-2">Score breakdown</p>
+                        <PathBreakdown factors={path.factors} />
                       </div>
-                    </div>
-                  )}
-                </div>
-              </Fragment>
+                    )}
+
+                    {/* Per-hop steps with MITRE */}
+                    {path.hops?.length > 0 && (
+                      <div>
+                        <p className="text-xs font-semibold text-muted uppercase tracking-wider mb-2">Steps</p>
+                        <div className="space-y-2">
+                          {path.hops.map((h, i) => (
+                            <div key={i} className="rounded-lg p-2.5" style={{ background: "var(--surface-2)" }}>
+                              <div className="flex items-start gap-2">
+                                <span className="text-xs text-muted font-mono mt-0.5">{i + 1}.</span>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-xs text-secondary">{h.justification}</p>
+                                  <div className="flex flex-wrap items-center gap-2 mt-1">
+                                    <span className="text-[10px] text-muted font-mono">score {h.score}</span>
+                                    <MitreTags mitre={h.mitre} />
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* MITRE for the whole path */}
+                    {path.mitre?.length > 0 && (
+                      <div>
+                        <p className="text-xs font-semibold text-muted uppercase tracking-wider mb-2">MITRE ATT&CK (references)</p>
+                        <MitreTags mitre={path.mitre} />
+                      </div>
+                    )}
+
+                    {/* CVEs */}
+                    {path.cve_ids?.length > 0 && (
+                      <div>
+                        <p className="text-xs font-semibold text-muted uppercase tracking-wider mb-2">CVEs involved</p>
+                        <div className="flex flex-wrap gap-2">
+                          {path.cve_ids.map((cve) => (
+                            <a key={cve} href={`https://nvd.nist.gov/vuln/detail/${cve}`} target="_blank" rel="noreferrer"
+                               onClick={(e) => e.stopPropagation()}
+                               className="text-xs font-mono text-info hover:underline flex items-center gap-1">
+                              {cve} <ExternalLink size={9} />
+                            </a>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             ))}
           </div>
         )}
@@ -254,10 +254,7 @@ function PathFlow({ ips }) {
     <div className="flex items-center gap-1 flex-wrap">
       {ips.map((ip, i) => (
         <Fragment key={i}>
-          <span className={`text-xs font-mono ${
-            ip === "0.0.0.0" ? "text-red-400" :
-            i === ips.length - 1 ? "text-orange-300" : "text-secondary"
-          }`}>
+          <span className={`text-xs font-mono ${ip === "0.0.0.0" ? "text-red-400" : i === ips.length - 1 ? "text-orange-300" : "text-secondary"}`}>
             {ip === "0.0.0.0" ? "ATTACKER" : ip}
           </span>
           {i < ips.length - 1 && <ArrowRight size={9} className="text-muted flex-shrink-0" />}
@@ -268,17 +265,8 @@ function PathFlow({ ips }) {
 }
 
 function _sevColor(sev) {
-  return sev === "CRITICAL" ? "#ef4444"
-    : sev === "HIGH" ? "#f97316"
-    : sev === "MEDIUM" ? "#eab308"
-    : "#3b82f6";
-}
-
-function _detectType(vector = "") {
-  const v = vector.toUpperCase();
-  if (v.includes("PIVOT") || v.includes("SMB") || v.includes("LATERAL") || v.includes("WINRM")) return "LATERAL_MOVEMENT";
-  if (v.includes("PRIVILEGE") || v.includes("PRIV") || v.includes("ROOT") || v.includes("SYSTEM")) return "PRIVILEGE_ESCALATION";
-  if (v.includes("SQL") || v.includes("DB") || v.includes("DATABASE") || v.includes("REDIS") || v.includes("MONGO")) return "DATA_ACCESS";
-  if (v.includes("SMTP") || v.includes("SNMP") || v.includes("PERSIST")) return "PERSISTENCE";
-  return "REMOTE_ACCESS";
+  return sev === "CRITICAL" ? "var(--sev-critical)"
+    : sev === "HIGH" ? "var(--sev-high)"
+    : sev === "MEDIUM" ? "var(--sev-medium)"
+    : "var(--sev-low)";
 }

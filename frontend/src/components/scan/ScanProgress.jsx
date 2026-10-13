@@ -11,13 +11,13 @@ export default function ScanProgress({ status, progress, message, logs = [], err
       {/* Status bar */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          {isRunning && <Loader size={16} className="animate-spin text-blue-500" />}
-          {isDone && <CheckCircle size={16} className="text-green-500" />}
-          {isFailed && <XCircle size={16} className="text-red-500" />}
+          {isRunning && <Loader size={16} className="animate-spin text-accent-text" />}
+          {isDone && <CheckCircle size={16} className="text-success" />}
+          {isFailed && <XCircle size={16} className="text-danger" />}
           <span className={`text-sm font-medium ${
             isDone ? "text-success" : isFailed ? "text-danger" : "text-primary"
           }`}>
-            {isDone ? "Scan Complete" : isFailed ? "Scan Failed" : message || "Initializing..."}
+            {isDone ? "Scan complete" : isFailed ? "Scan failed" : message || "Initializing..."}
           </span>
         </div>
         <span className="text-xs text-muted font-mono">{progress}%</span>
@@ -26,7 +26,7 @@ export default function ScanProgress({ status, progress, message, logs = [], err
       <ProgressBar value={progress} animated={isRunning && progress === 0} />
 
       {error && (
-        <div className="rounded-lg p-3 bg-red-500/10 border border-red-500/30 text-sm text-danger">
+        <div role="alert" className="rounded-lg p-3 text-sm text-danger" style={{ background: "var(--accent-soft)", border: "1px solid var(--accent-line)" }}>
           {error}
         </div>
       )}
@@ -34,18 +34,19 @@ export default function ScanProgress({ status, progress, message, logs = [], err
       {/* Live log terminal */}
       {logs.length > 0 && (
         <div className="rounded-xl overflow-hidden" style={{ border: "1px solid var(--color-border)" }}>
-          <div className="flex items-center gap-2 px-3 py-2 text-xs text-muted"
-            style={{ background: "var(--color-bg-elevated)", borderBottom: "1px solid var(--color-border)" }}>
+          <div className="flex items-center gap-2 px-3 py-2 text-muted font-mono uppercase"
+            style={{ fontSize: "0.68rem", letterSpacing: "0.1em", background: "var(--surface-2)", borderBottom: "1px solid var(--line)" }}>
             <Terminal size={12} />
-            <span>Live Output</span>
+            <span>Live output</span>
           </div>
           <div
-            className="p-3 h-40 overflow-y-auto font-mono text-xs space-y-0.5"
-            style={{ background: "var(--color-bg-elevated)" }}
+            className="p-3 h-48 overflow-y-auto font-mono text-xs space-y-0.5"
+            style={{ background: "var(--bg-sunken)" }}
+            aria-live="polite"
           >
             {logs.map((log, i) => (
               <p key={i} className="text-tertiary leading-relaxed">
-                <span className="text-blue-500/50 select-none mr-2">›</span>{log}
+                <span className="text-accent-text select-none mr-2" aria-hidden="true">›</span>{log}
               </p>
             ))}
           </div>

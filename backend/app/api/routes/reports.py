@@ -1,12 +1,13 @@
 import io
 import json
-from datetime import datetime
+from xml.sax.saxutils import escape
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse, JSONResponse
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.models.scan import ScanSession, Host
+from app.core.timeutil import utcnow, iso_utc
 
 router = APIRouter()
 
@@ -22,7 +23,7 @@ async def export_json(scan_id: str, db: Session = Depends(get_db)):
 
     payload = {
         "report": {
-            "generated_at": datetime.utcnow().isoformat(),
+            "generated_at": iso_utc(utcnow()),
             "app": "ViperV2 Network Scanner",
             "version": "2.0.0",
         },
@@ -36,7 +37,7 @@ async def export_json(scan_id: str, db: Session = Depends(get_db)):
     }
 
     content = json.dumps(payload, indent=2, default=str)
-    filename = f"viperv2_scan_{scan_id[:8]}_{datetime.utcnow().strftime('%Y%m%d')}.json"
+    filename = f"viperv2_scan_{scan_id[:8]}_{utcnow().strftime('%Y%m%d')}.json"
 
     return StreamingResponse(
         iter([content]),
@@ -60,7 +61,7 @@ async def export_pdf(scan_id: str, db: Session = Depends(get_db)):
             detail="ReportLab not installed. Install with: pip install reportlab",
         )
 
-    filename = f"viperv2_report_{scan_id[:8]}_{datetime.utcnow().strftime('%Y%m%d')}.pdf"
+    filename = f"viperv2_report_{scan_id[:8]}_{utcnow().strftime('%Y%m%d')}.pdf"
     return StreamingResponse(
         io.BytesIO(pdf_bytes),
         media_type="application/pdf",
@@ -75,657 +76,448 @@ def _generate_advanced_pdf(scan_id: str, scan: ScanSession, db: Session) -> byte
     from reportlab.lib import colors
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.platypus import (
-        SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer,
-        HRFlowable, PageBreak,
+        SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, HRFlowable, PageBreak,
     )
     from reportlab.lib.units import cm
-    from reportlab.lib.enums import TA_CENTER, TA_LEFT
-
-    # Load all data
-    hosts = db.query(Host).filter(Host.scan_id == scan_id).all()
+    from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_JUSTIFY
 
     from app.vulnerability_scanner.models import Vulnerability
     from app.exploitability.models import ExploitabilityAssessment, RemediationItem
     from app.attack_graph.models import AttackGraph, AttackPath
+    from app.prioritization.engine import prioritize_scan
+    from app.scanners.host_role import classify_host, ROLE_LABELS
 
+    # ── Load data ────────────────────────────────────────────────────────────
+    hosts = db.query(Host).filter(Host.scan_id == scan_id).all()
+    host_by_id = {h.id: h for h in hosts}
     all_vulns = db.query(Vulnerability).filter(
-        Vulnerability.host_id.in_([h.id for h in hosts])
-    ).all() if hosts else []
-
+        Vulnerability.host_id.in_([h.id for h in hosts])).all() if hosts else []
     assessments = db.query(ExploitabilityAssessment).filter(
-        ExploitabilityAssessment.scan_id == scan_id
-    ).all()
-
+        ExploitabilityAssessment.scan_id == scan_id).all()
+    assess_by_vuln = {a.vuln_id: a for a in assessments}
     remediation_items = db.query(RemediationItem).filter(
-        RemediationItem.scan_id == scan_id
-    ).all()
-
+        RemediationItem.scan_id == scan_id).all()
     ag = db.query(AttackGraph).filter(AttackGraph.scan_id == scan_id).first()
-    attack_paths = (
-        db.query(AttackPath)
-        .filter(AttackPath.graph_id == ag.id)
-        .order_by(AttackPath.total_score.desc())
-        .limit(10)
-        .all()
-        if ag else []
-    )
+    attack_paths = (db.query(AttackPath).filter(AttackPath.graph_id == ag.id)
+                    .order_by(AttackPath.total_score.desc()).limit(10).all() if ag else [])
+    findings = prioritize_scan(scan_id, db)   # evidence-based ranking (Phase 5)
 
-    # Compute security score
-    vuln_penalty = min(50, len(all_vulns) * 2)
-    exploit_penalty = min(30, len([a for a in assessments if a.exploit_maturity in ("WEAPONIZED", "FUNCTIONAL")]) * 5)
-    path_penalty = min(20, len([p for p in attack_paths if getattr(p, "severity", "") in ("CRITICAL", "HIGH")]) * 4)
-    security_score = max(0, 100 - vuln_penalty - exploit_penalty - path_penalty)
-
-    # Color palette
-    C_DARK    = colors.HexColor("#0f172a")
-    C_BLUE    = colors.HexColor("#0ea5e9")
-    C_RED     = colors.HexColor("#ef4444")
-    C_ORANGE  = colors.HexColor("#f97316")
-    C_YELLOW  = colors.HexColor("#eab308")
-    C_GREEN   = colors.HexColor("#22c55e")
-    C_GRAY    = colors.HexColor("#64748b")
-    C_LIGHT   = colors.HexColor("#f8fafc")
-    C_BORDER  = colors.HexColor("#e2e8f0")
-    C_ROW_ALT = colors.HexColor("#f1f5f9")
-
-    SEV_COLORS = {
-        "CRITICAL": C_RED,
-        "HIGH":     C_ORANGE,
-        "MEDIUM":   C_YELLOW,
-        "LOW":      C_GREEN,
-    }
-
-    MATURITY_COLORS = {
-        "WEAPONIZED":  C_RED,
-        "FUNCTIONAL":  C_ORANGE,
-        "POC":         C_YELLOW,
-        "THEORETICAL": C_GRAY,
-        "UNPROVEN":    C_GRAY,
-    }
-
-    PRIORITY_COLORS = {
-        "IMMEDIATE": C_RED,
-        "CRITICAL":  C_RED,
-        "URGENT":    C_ORANGE,
-        "HIGH":      C_ORANGE,
-        "SCHEDULED": C_YELLOW,
-        "MEDIUM":    C_YELLOW,
-        "MONITOR":   C_GREEN,
-        "LOW":       C_GREEN,
-    }
-
-    buf = io.BytesIO()
-    doc = SimpleDocTemplate(
-        buf, pagesize=A4,
-        topMargin=1.5 * cm, bottomMargin=1.5 * cm,
-        leftMargin=2 * cm, rightMargin=2 * cm,
-    )
-    styles = getSampleStyleSheet()
-    W = A4[0] - 4 * cm  # usable width
-
-    def _h1(text):
-        s = ParagraphStyle("h1", parent=styles["Heading1"], fontSize=18,
-                           textColor=C_BLUE, spaceAfter=6)
-        return Paragraph(text, s)
-
-    def _h2(text):
-        s = ParagraphStyle("h2", parent=styles["Heading2"], fontSize=13,
-                           textColor=C_DARK, spaceBefore=12, spaceAfter=4)
-        return Paragraph(text, s)
-
-    def _h3(text):
-        s = ParagraphStyle("h3", parent=styles["Heading3"], fontSize=11,
-                           textColor=C_DARK, spaceBefore=8, spaceAfter=3)
-        return Paragraph(text, s)
-
-    def _body(text):
-        s = ParagraphStyle("body", parent=styles["Normal"], fontSize=9,
-                           textColor=C_DARK, spaceAfter=3)
-        return Paragraph(text, s)
-
-    def _divider():
-        return HRFlowable(width="100%", thickness=0.5, color=C_BORDER, spaceAfter=6)
-
-    def _score_color(score):
-        if score >= 80:
-            return C_GREEN
-        if score >= 60:
-            return C_YELLOW
-        if score >= 40:
-            return C_ORANGE
-        return C_RED
-
-    def _sev_style(rows_with_sev, header_len=1):
-        cmds = [
-            ("BACKGROUND", (0, 0), (-1, 0), C_BLUE),
-            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-            ("FONTSIZE", (0, 0), (-1, -1), 8),
-            ("GRID", (0, 0), (-1, -1), 0.3, C_BORDER),
-            ("PADDING", (0, 0), (-1, -1), 4),
-            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ]
-        for i, sev in enumerate(rows_with_sev):
-            row_i = i + header_len
-            c = SEV_COLORS.get(sev, C_GRAY)
-            cmds.append(("BACKGROUND", (0, row_i), (-1, row_i), colors.Color(c.red, c.green, c.blue, alpha=0.12)))
-            if i % 2 == 1 and sev not in SEV_COLORS:
-                cmds.append(("BACKGROUND", (0, row_i), (-1, row_i), C_ROW_ALT))
-        return TableStyle(cmds)
-
-    elems = []
-
-    # ── COVER PAGE ────────────────────────────────────────────────────────────
-    elems.append(Spacer(1, 2 * cm))
-    cover_title = ParagraphStyle("ct", parent=styles["Title"], fontSize=28,
-                                 textColor=C_BLUE, alignment=TA_CENTER)
-    elems.append(Paragraph("ViperV2 Security Report", cover_title))
-    elems.append(Spacer(1, 0.5 * cm))
-    sub = ParagraphStyle("sub", parent=styles["Normal"], fontSize=12,
-                         textColor=C_GRAY, alignment=TA_CENTER)
-    elems.append(Paragraph("Intelligent Network Security Assessment Platform", sub))
-    elems.append(Spacer(1, 1.5 * cm))
-
-    # Score box
-    score_label = "SECURE" if security_score >= 80 else ("MODERATE" if security_score >= 60 else ("AT RISK" if security_score >= 40 else "CRITICAL"))
-    score_data = [[f"Security Score: {security_score}/100  [{score_label}]"]]
-    score_tbl = Table(score_data, colWidths=[W])
-    sc = _score_color(security_score)
-    score_tbl.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, -1), sc),
-        ("TEXTCOLOR", (0, 0), (-1, -1), colors.white),
-        ("FONTNAME", (0, 0), (-1, -1), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, -1), 16),
-        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-        ("PADDING", (0, 0), (-1, -1), 14),
-    ]))
-    elems.append(score_tbl)
-    elems.append(Spacer(1, 1 * cm))
-
-    # Cover metadata
-    cover_meta = [
-        ["Generated", datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")],
-        ["Scan ID", scan.id[:16] + "..."],
-        ["Target", scan.target or "N/A"],
-        ["Scan Type", scan.type.upper()],
-        ["Status", scan.status.upper()],
-    ]
-    cm_tbl = Table(cover_meta, colWidths=[4 * cm, W - 4 * cm])
-    cm_tbl.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (0, -1), C_DARK),
-        ("TEXTCOLOR", (0, 0), (0, -1), colors.white),
-        ("FONTNAME", (0, 0), (-1, -1), "Helvetica"),
-        ("FONTSIZE", (0, 0), (-1, -1), 9),
-        ("GRID", (0, 0), (-1, -1), 0.3, C_BORDER),
-        ("PADDING", (0, 0), (-1, -1), 6),
-    ]))
-    elems.append(cm_tbl)
-    elems.append(PageBreak())
-
-    # ── SECTION 1: EXECUTIVE SUMMARY ─────────────────────────────────────────
-    elems.append(_h1("1. Executive Summary"))
-    elems.append(_divider())
-
+    # ── Key figures ──────────────────────────────────────────────────────────
     by_sev = {s: 0 for s in ("CRITICAL", "HIGH", "MEDIUM", "LOW")}
     for v in all_vulns:
         if v.severity in by_sev:
             by_sev[v.severity] += 1
-
+    confirmed = sum(1 for v in all_vulns if (v.match_type or "cpe") == "cpe")
+    weak = len(all_vulns) - confirmed
+    kev_count = sum(1 for v in all_vulns if v.kev)
     weaponized = sum(1 for a in assessments if a.exploit_maturity == "WEAPONIZED")
     functional = sum(1 for a in assessments if a.exploit_maturity == "FUNCTIONAL")
-    immediate_patch = sum(1 for r in remediation_items if r.priority in ("IMMEDIATE", "CRITICAL"))
+    immediate = sum(1 for a in assessments if a.patch_priority == "IMMEDIATE")
 
-    summary_rows = [
-        ["Metric", "Value", "Risk"],
-        ["Total Hosts Discovered", str(len(hosts)), "—"],
-        ["Total Open Ports", str(sum(h.open_ports_count for h in hosts)), "—"],
-        ["Total Vulnerabilities", str(len(all_vulns)), "HIGH" if len(all_vulns) > 20 else "MEDIUM" if len(all_vulns) > 5 else "LOW"],
-        ["Critical CVEs", str(by_sev["CRITICAL"]), "CRITICAL" if by_sev["CRITICAL"] > 0 else "OK"],
-        ["High CVEs", str(by_sev["HIGH"]), "HIGH" if by_sev["HIGH"] > 0 else "OK"],
-        ["Weaponized Exploits", str(weaponized), "CRITICAL" if weaponized > 0 else "OK"],
-        ["Functional Exploits", str(functional), "HIGH" if functional > 0 else "OK"],
-        ["Attack Paths Found", str(ag.path_count if ag else 0), "HIGH" if (ag and ag.path_count > 0) else "OK"],
-        ["Immediate Patch Actions", str(immediate_patch), "CRITICAL" if immediate_patch > 0 else "OK"],
-        ["Network Risk Level", ag.network_risk_level if ag else "NONE", ag.network_risk_level if ag else "NONE"],
-        ["Overall Security Score", f"{security_score}/100", score_label],
-    ]
-    sev_col = [r[2] for r in summary_rows[1:]]
-    s_tbl = Table(summary_rows, colWidths=[7 * cm, 4 * cm, W - 11 * cm])
-    cmds = [
-        ("BACKGROUND", (0, 0), (-1, 0), C_BLUE),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, -1), 9),
-        ("GRID", (0, 0), (-1, -1), 0.3, C_BORDER),
-        ("PADDING", (0, 0), (-1, -1), 5),
-    ]
-    for i, risk in enumerate(sev_col):
-        rc = SEV_COLORS.get(risk, PRIORITY_COLORS.get(risk, C_GRAY))
-        cmds.append(("BACKGROUND", (2, i + 1), (2, i + 1), colors.Color(rc.red, rc.green, rc.blue, alpha=0.25)))
-        cmds.append(("TEXTCOLOR", (2, i + 1), (2, i + 1), rc))
-        cmds.append(("FONTNAME", (2, i + 1), (2, i + 1), "Helvetica-Bold"))
-    s_tbl.setStyle(TableStyle(cmds))
-    elems.append(s_tbl)
-    elems.append(Spacer(1, 0.5 * cm))
+    # Risk posture from real evidence
+    if kev_count or weaponized or (ag and ag.network_risk_level == "CRITICAL"):
+        posture, p_color_key = "CRITICAL", "CRITICAL"
+    elif functional or by_sev["CRITICAL"] or (ag and ag.network_risk_level == "HIGH"):
+        posture, p_color_key = "ELEVATED", "HIGH"
+    elif by_sev["HIGH"] or all_vulns:
+        posture, p_color_key = "MODERATE", "MEDIUM"
+    else:
+        posture, p_color_key = "LOW", "LOW"
 
-    # Key findings paragraph
-    findings = []
-    if weaponized:
-        findings.append(f"<b>{weaponized} WEAPONIZED exploit(s)</b> detected — immediate action required.")
-    if by_sev["CRITICAL"]:
-        findings.append(f"{by_sev['CRITICAL']} CRITICAL CVE(s) require emergency patching.")
-    if ag and ag.network_risk_level in ("CRITICAL", "HIGH"):
-        findings.append(f"Network risk level is <b>{ag.network_risk_level}</b> — {ag.path_count} attack path(s) identified.")
-    if immediate_patch:
-        findings.append(f"{immediate_patch} remediation action(s) classified as IMMEDIATE priority.")
-    if not findings:
-        findings.append("No critical findings detected. Continue monitoring and apply scheduled patches.")
+    # ── Palette (VIPER identity: crimson accent, light report body) ──────────
+    C_INK     = colors.HexColor("#1a1420")
+    C_ACCENT  = colors.HexColor("#e4324f")   # VIPER crimson
+    C_ACCENT2 = colors.HexColor("#b3122b")
+    C_RED     = colors.HexColor("#e4324f")
+    C_ORANGE  = colors.HexColor("#ea7a45")
+    C_YELLOW  = colors.HexColor("#cfa22c")
+    C_GREEN   = colors.HexColor("#3fbf6a")
+    C_GRAY    = colors.HexColor("#6b6572")
+    C_BORDER  = colors.HexColor("#e4e0e6")
+    C_ROW_ALT = colors.HexColor("#faf7f9")
+    C_SOFT    = colors.HexColor("#fcecef")   # soft crimson wash
+    SEV_COLORS = {"CRITICAL": C_RED, "HIGH": C_ORANGE, "MEDIUM": C_YELLOW, "LOW": C_GREEN}
+    MAT_COLORS = {"WEAPONIZED": C_RED, "FUNCTIONAL": C_ORANGE, "POC": C_YELLOW,
+                  "UNKNOWN": C_GRAY, "THEORETICAL": C_GRAY, "UNPROVEN": C_GRAY}
 
-    for f in findings:
-        elems.append(_body(f"• {f}"))
-    elems.append(PageBreak())
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=1.6 * cm, bottomMargin=1.6 * cm,
+                            leftMargin=2 * cm, rightMargin=2 * cm,
+                            title=f"VIPER Security Assessment - {scan.target or scan_id[:8]}",
+                            author="VIPER")
+    styles = getSampleStyleSheet()
+    W = A4[0] - 4 * cm
 
-    # ── SECTION 2: NETWORK OVERVIEW ───────────────────────────────────────────
-    elems.append(_h1("2. Network Overview"))
-    elems.append(_divider())
+    def _style(name, **kw):
+        return ParagraphStyle(name, parent=styles["Normal"], **kw)
 
-    os_dist = _os_distribution(hosts)
-    if os_dist:
-        elems.append(_h3("Operating System Distribution"))
-        os_rows = [["OS / Platform", "Count"]] + [[k, str(v)] for k, v in os_dist.items()]
-        os_tbl = Table(os_rows, colWidths=[W * 0.75, W * 0.25])
-        os_tbl.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), C_BLUE),
+    H1 = _style("h1", fontSize=16, leading=19, textColor=C_ACCENT, spaceBefore=4,
+                spaceAfter=4, fontName="Helvetica-Bold")
+    H2 = _style("h2", fontSize=11.5, leading=14, textColor=C_INK, spaceBefore=10,
+                spaceAfter=3, fontName="Helvetica-Bold")
+    BODY = _style("body", fontSize=9.3, leading=13.5, textColor=C_INK, spaceAfter=4,
+                  alignment=TA_JUSTIFY)
+    SMALL = _style("small", fontSize=8, leading=10.5, textColor=C_GRAY)
+    NOTE = _style("note", fontSize=8, leading=11, textColor=C_GRAY, alignment=TA_JUSTIFY,
+                  leftIndent=6, borderPadding=0)
+
+    def h1(n, t):
+        return Paragraph(f"{n}. &nbsp;{escape(t)}", H1)
+
+    def body(t):
+        return Paragraph(t, BODY)
+
+    def note(t):
+        return Paragraph(f"<i>Note — {t}</i>", NOTE)
+
+    def divider():
+        return HRFlowable(width="100%", thickness=1, color=C_ACCENT, spaceAfter=7, spaceBefore=1)
+
+    def cell(t, bold=False, size=7.6, color=C_INK, align=TA_LEFT):
+        st = _style("c", fontSize=size, leading=size + 2.5, textColor=color, alignment=align,
+                    fontName="Helvetica-Bold" if bold else "Helvetica")
+        return Paragraph(escape(str(t)) if not bold else f"<b>{escape(str(t))}</b>", st)
+
+    def table(data, widths, header_bg=C_INK):
+        t = Table(data, colWidths=widths, repeatRows=1)
+        t.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), header_bg),
             ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
             ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-            ("FONTSIZE", (0, 0), (-1, -1), 9),
-            ("GRID", (0, 0), (-1, -1), 0.3, C_BORDER),
+            ("FONTSIZE", (0, 0), (-1, 0), 8),
+            ("GRID", (0, 0), (-1, -1), 0.4, C_BORDER),
             ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, C_ROW_ALT]),
-            ("PADDING", (0, 0), (-1, -1), 5),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("TOPPADDING", (0, 0), (-1, -1), 3.5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 3.5),
+            ("LEFTPADDING", (0, 0), (-1, -1), 5),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 5),
         ]))
-        elems.append(os_tbl)
-        elems.append(Spacer(1, 0.5 * cm))
+        return t
 
-    # ── SECTION 3: HOST INVENTORY ─────────────────────────────────────────────
-    elems.append(_h1("3. Host Inventory"))
-    elems.append(_divider())
+    def badge(text, color):
+        return Paragraph(f'<font color="#{color.hexval()[2:]}"><b>{escape(str(text))}</b></font>',
+                         _style("b", fontSize=7.6, leading=10))
 
-    host_rows = [["IP Address", "Hostname", "OS", "Open Ports", "CVEs", "Max Severity"]]
-    host_sevs = []
-    for h in hosts:
-        sev = h.max_severity()
-        host_rows.append([
-            h.ip or "",
-            (h.hostname or "—")[:22],
-            (h.os or "Unknown")[:25],
-            str(h.open_ports_count),
-            str(h.vuln_count),
-            sev or "—",
-        ])
-        host_sevs.append(sev or "")
-    h_tbl = Table(host_rows, colWidths=[3.5*cm, 4*cm, 4.5*cm, 2.5*cm, 1.5*cm, 3*cm])
-    cmds2 = [
-        ("BACKGROUND", (0, 0), (-1, 0), C_BLUE),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, -1), 8),
-        ("GRID", (0, 0), (-1, -1), 0.3, C_BORDER),
-        ("PADDING", (0, 0), (-1, -1), 4),
+    elems = []
+    today = utcnow().strftime("%d %B %Y")
+
+    # ══ COVER PAGE ═══════════════════════════════════════════════════════════
+    elems.append(Spacer(1, 2.2 * cm))
+    elems.append(Paragraph("VIPER", _style("brand", fontSize=46, textColor=C_ACCENT,
+                 alignment=TA_CENTER, fontName="Helvetica-Bold", leading=48)))
+    elems.append(Paragraph("RISK ANALYSIS", _style("brandsub", fontSize=12, textColor=C_GRAY,
+                 alignment=TA_CENTER, leading=20)))
+    elems.append(Spacer(1, 0.8 * cm))
+    elems.append(Paragraph("Network Security Assessment Report", _style("ctitle", fontSize=19,
+                 textColor=C_INK, alignment=TA_CENTER, fontName="Helvetica-Bold")))
+    elems.append(Spacer(1, 1.4 * cm))
+
+    posture_tbl = Table([[f"RISK POSTURE:  {posture}"]], colWidths=[W])
+    posture_tbl.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), SEV_COLORS.get(p_color_key, C_GRAY)),
+        ("TEXTCOLOR", (0, 0), (-1, -1), colors.white),
+        ("FONTNAME", (0, 0), (-1, -1), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 15), ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("TOPPADDING", (0, 0), (-1, -1), 12), ("BOTTOMPADDING", (0, 0), (-1, -1), 12),
+    ]))
+    elems.append(posture_tbl)
+    elems.append(Spacer(1, 1.2 * cm))
+
+    meta = [
+        ["Target / scope", escape(scan.target or "N/A")],
+        ["Assessment type", f"{scan.type.upper()} scan"],
+        ["Hosts in scope", str(len(hosts))],
+        ["Scan status", (scan.status or "").upper()],
+        ["Report date", today],
+        ["Scan reference", scan.id[:18]],
+    ]
+    meta_tbl = Table(meta, colWidths=[5 * cm, W - 5 * cm])
+    meta_tbl.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (0, -1), C_INK),
+        ("TEXTCOLOR", (0, 0), (0, -1), colors.white),
+        ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+        ("FONTNAME", (1, 0), (1, -1), "Helvetica"),
+        ("FONTSIZE", (0, 0), (-1, -1), 9.5),
+        ("GRID", (0, 0), (-1, -1), 0.4, C_BORDER),
+        ("TOPPADDING", (0, 0), (-1, -1), 7), ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+        ("LEFTPADDING", (0, 0), (-1, -1), 8),
+    ]))
+    elems.append(meta_tbl)
+    elems.append(Spacer(1, 1.4 * cm))
+
+    auth_p = Paragraph(
+        "<b>AUTHORIZED USE ONLY</b> — This report documents a security assessment conducted with "
+        "explicit authorisation on the scope above. It is confidential and intended solely for the "
+        "asset owner and authorised personnel.",
+        _style("auth", fontSize=8.8, leading=13, textColor=C_ACCENT2, alignment=TA_CENTER,
+               fontName="Helvetica-Bold"))
+    auth = Table([[auth_p]], colWidths=[W])
+    auth.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), C_SOFT),
+        ("BOX", (0, 0), (-1, -1), 1, C_ACCENT),
+        ("TOPPADDING", (0, 0), (-1, -1), 10), ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
+        ("LEFTPADDING", (0, 0), (-1, -1), 14), ("RIGHTPADDING", (0, 0), (-1, -1), 14),
+    ]))
+    elems.append(auth)
+    elems.append(PageBreak())
+
+    # ══ 1. EXECUTIVE SUMMARY ════════════════════════════════════════════════
+    elems.append(h1("1", "Executive summary"))
+    elems.append(divider())
+
+    top = findings[0] if findings else None
+    posture_sentence = {
+        "CRITICAL": "requires immediate attention",
+        "ELEVATED": "is elevated and should be addressed promptly",
+        "MODERATE": "is moderate",
+        "LOW": "is low",
+    }[posture]
+    s1 = (f"This assessment of <b>{escape(scan.target or 'the target')}</b> covered "
+          f"<b>{len(hosts)}</b> host(s) and identified <b>{len(all_vulns)}</b> potential "
+          f"vulnerabilities, of which <b>{confirmed}</b> are confirmed against the detected "
+          f"product and version (CPE) and <b>{weak}</b> are weaker keyword matches that should "
+          f"be verified. The overall risk posture {posture_sentence}.")
+    elems.append(body(s1))
+    if kev_count or weaponized:
+        s2 = (f"Critically, <b>{kev_count}</b> finding(s) correspond to vulnerabilities that are "
+              f"<b>known to be exploited in the wild</b> (CISA KEV), and <b>{weaponized}</b> have a "
+              f"weaponized public exploit. ")
+    else:
+        s2 = ("No findings are currently listed as exploited in the wild (CISA KEV), though this "
+              "does not rule out risk. ")
+    if top:
+        s2 += (f"The highest-priority issue is <b>{escape(top['cve_id'])}</b> on "
+               f"<b>{escape(top['host_ip'])}</b> ({escape(top.get('affected_service') or 'service')}), "
+               f"ranked {top['score']:.0f}/100.")
+    elems.append(body(s2))
+    elems.append(Spacer(1, 0.3 * cm))
+
+    # Key figures
+    elems.append(Paragraph("Key figures", H2))
+    kf = [
+        [cell("Hosts in scope", bold=True), cell(len(hosts)),
+         cell("Confirmed vulnerabilities (CPE)", bold=True), cell(confirmed)],
+        [cell("Exploited in the wild (KEV)", bold=True), cell(kev_count),
+         cell("Weaponized / functional exploits", bold=True), cell(f"{weaponized} / {functional}")],
+        [cell("Critical / high severity", bold=True), cell(f"{by_sev['CRITICAL']} / {by_sev['HIGH']}"),
+         cell("Attack paths identified", bold=True), cell(ag.path_count if ag else 0)],
+    ]
+    kf_tbl = Table(kf, colWidths=[W * 0.3, W * 0.2, W * 0.3, W * 0.2])
+    kf_tbl.setStyle(TableStyle([
+        ("GRID", (0, 0), (-1, -1), 0.4, C_BORDER),
+        ("BACKGROUND", (0, 0), (0, -1), C_ROW_ALT), ("BACKGROUND", (2, 0), (2, -1), C_ROW_ALT),
+        ("TOPPADDING", (0, 0), (-1, -1), 5), ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-    ]
-    for i, sev in enumerate(host_sevs):
-        rc = SEV_COLORS.get(sev, C_GRAY)
-        cmds2.append(("BACKGROUND", (5, i+1), (5, i+1), colors.Color(rc.red, rc.green, rc.blue, alpha=0.2)))
-        cmds2.append(("TEXTCOLOR", (5, i+1), (5, i+1), rc))
-        if i % 2 == 0:
-            cmds2.append(("BACKGROUND", (0, i+1), (4, i+1), C_ROW_ALT))
-    h_tbl.setStyle(TableStyle(cmds2))
-    elems.append(h_tbl)
-    elems.append(PageBreak())
-
-    # ── SECTION 4: OPEN PORTS & SERVICES ─────────────────────────────────────
-    elems.append(_h1("4. Open Ports & Services"))
-    elems.append(_divider())
-
-    port_rows = [["Host IP", "Port", "Protocol", "State", "Service", "Version"]]
-    for h in hosts:
-        open_ports = [p for p in (h.ports or []) if p.get("state") == "open"]
-        for p in open_ports[:20]:
-            port_rows.append([
-                h.ip or "",
-                str(p.get("port", "")),
-                p.get("protocol", "tcp"),
-                p.get("state", ""),
-                (p.get("service") or p.get("name") or "—")[:18],
-                (p.get("version") or "—")[:25],
-            ])
-    p_tbl = Table(port_rows, colWidths=[3*cm, 2*cm, 2.5*cm, 2*cm, 3.5*cm, W-13*cm], repeatRows=1)
-    p_tbl.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), C_BLUE),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, -1), 8),
-        ("GRID", (0, 0), (-1, -1), 0.3, C_BORDER),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, C_ROW_ALT]),
-        ("PADDING", (0, 0), (-1, -1), 4),
     ]))
-    elems.append(p_tbl)
+    elems.append(kf_tbl)
+    elems.append(Spacer(1, 0.3 * cm))
+
+    # Top 3 priority actions
+    elems.append(Paragraph("Top priority actions", H2))
+    def _remediate(f):
+        svc = escape(f.get("affected_service") or "the affected service")
+        port = f.get("affected_port")
+        tail = f" (or restrict network access to {escape(port)})" if port else ""
+        return f"upgrade {svc} to a fixed release{tail}"
+    actions = []
+    for f in findings[:3]:
+        host = host_by_id.get(f["host_id"])
+        fix = _remediate(f)
+        actions.append(f"<b>{escape(f['cve_id'])}</b> on {escape(f['host_ip'])} "
+                       f"({escape(f.get('affected_service') or 'service')}) — {fix}.")
+    if not actions:
+        actions = ["No material findings require action; maintain the regular scanning cadence."]
+    for i, a in enumerate(actions, 1):
+        elems.append(body(f"{i}. {a}"))
+    elems.append(Spacer(1, 0.2 * cm))
+    elems.append(note("prioritisation is a decision aid, not a verdict. Findings marked as a weak "
+                      "keyword match may be false positives and must be verified before action; "
+                      "KEV/EPSS describe a CVE's exploitation in the world, not that this host is "
+                      "necessarily vulnerable."))
     elems.append(PageBreak())
 
-    # ── SECTION 5: VULNERABILITY SUMMARY ──────────────────────────────────────
-    elems.append(_h1("5. Vulnerability Summary"))
-    elems.append(_divider())
+    # ══ 2. METHODOLOGY ══════════════════════════════════════════════════════
+    elems.append(h1("2", "Methodology"))
+    elems.append(divider())
+    elems.append(body(
+        "Findings in this report are derived from real data collected during the assessment; "
+        "no results are simulated. The approach was:"))
+    for m in [
+        "<b>Discovery &amp; service detection.</b> Live hosts and open ports were enumerated, and "
+        "service names and versions identified with Nmap (<i>-sV</i>; OS detection <i>-O</i> where "
+        "privileges allowed).",
+        "<b>Vulnerability correlation (NVD).</b> Each service was correlated against the National "
+        "Vulnerability Database. Where the product and version were known, CVEs were matched by "
+        "<b>CPE</b> and marked <i>Confirmed</i>; otherwise a keyword search was used and the result "
+        "flagged as a <i>weak match</i> (possible false positive).",
+        "<b>Real-world exploitation signals.</b> Every CVE was enriched with the <b>CISA KEV</b> "
+        "catalogue (exploited in the wild) and its <b>EPSS</b> score (exploitation probability).",
+        "<b>Evidence-based exploitability.</b> Exploit maturity is derived from real evidence "
+        "(KEV, public exploit references such as Exploit-DB / Metasploit, EPSS) — never guessed "
+        "from CVSS. No exploitation was performed; the assessment is intelligence only.",
+        "<b>Prioritisation &amp; attack paths.</b> Findings were ranked by a transparent score "
+        "(exploitation evidence, EPSS, CVSS, match confidence, exposure, lateral movement). Attack "
+        "paths were modelled from this evidence as a heuristic graph.",
+    ]:
+        elems.append(body(f"&bull;&nbsp; {m}"))
+    elems.append(note("the attack-path model is a heuristic, evidence-based ranking — not a formal "
+                      "attack graph (e.g. MulVAL); it does not prove reachability or chain exploit "
+                      "preconditions. Host roles are inferred from observed services, not certified."))
+    elems.append(PageBreak())
 
-    # Severity distribution bar
-    sev_summary = [["Severity", "Count", "Percentage"]]
-    total_v = max(len(all_vulns), 1)
-    for sev in ("CRITICAL", "HIGH", "MEDIUM", "LOW"):
-        cnt = by_sev[sev]
-        sev_summary.append([sev, str(cnt), f"{cnt*100//total_v}%"])
-    sv_tbl = Table(sev_summary, colWidths=[4*cm, 3*cm, W-7*cm])
-    sev_cmds = [
-        ("BACKGROUND", (0, 0), (-1, 0), C_BLUE),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, -1), 9),
-        ("GRID", (0, 0), (-1, -1), 0.3, C_BORDER),
-        ("PADDING", (0, 0), (-1, -1), 5),
-    ]
-    for i, sev in enumerate(("CRITICAL", "HIGH", "MEDIUM", "LOW")):
-        rc = SEV_COLORS[sev]
-        sev_cmds.append(("BACKGROUND", (0, i+1), (0, i+1), colors.Color(rc.red, rc.green, rc.blue, alpha=0.25)))
-        sev_cmds.append(("TEXTCOLOR", (0, i+1), (0, i+1), rc))
-        sev_cmds.append(("FONTNAME", (0, i+1), (0, i+1), "Helvetica-Bold"))
-    sv_tbl.setStyle(TableStyle(sev_cmds))
-    elems.append(sv_tbl)
-    elems.append(Spacer(1, 0.5 * cm))
-
-    # ── SECTION 6: CRITICAL CVEs ───────────────────────────────────────────────
-    elems.append(_h1("6. Critical CVE Details"))
-    elems.append(_divider())
-
-    crit_vulns = [v for v in all_vulns if v.severity in ("CRITICAL", "HIGH")][:25]
-    if crit_vulns:
-        vuln_rows = [["CVE ID", "Severity", "CVSS", "Service", "Port", "Host IP"]]
-        vuln_sevs = []
-        for v in crit_vulns:
-            host_ip = next((h.ip for h in hosts if h.id == v.host_id), "—")
-            vuln_rows.append([
-                v.cve_id or "—",
-                v.severity or "—",
-                str(v.cvss or "—"),
-                (v.affected_service or "—")[:20],
-                v.affected_port or "—",
-                host_ip,
+    # ══ 3. PRIORITISED FINDINGS ═════════════════════════════════════════════
+    elems.append(h1("3", "Prioritised findings"))
+    elems.append(divider())
+    if findings:
+        elems.append(body(
+            "Findings are ordered by the evidence-based priority score. <b>Match</b> shows whether "
+            "the CVE was confirmed by CPE or is a weaker keyword match; <b>KEV</b> marks "
+            "exploitation in the wild; <b>EPSS</b> is the exploitation probability."))
+        rows = [[cell("#", bold=True, color=colors.white), cell("CVE", bold=True, color=colors.white),
+                 cell("Host · Service", bold=True, color=colors.white), cell("Sev", bold=True, color=colors.white),
+                 cell("Match", bold=True, color=colors.white), cell("KEV", bold=True, color=colors.white),
+                 cell("EPSS", bold=True, color=colors.white), cell("Maturity", bold=True, color=colors.white),
+                 cell("Score", bold=True, color=colors.white)]]
+        for f in findings[:28]:
+            sev = (f.get("severity") or "").upper()
+            rows.append([
+                cell(f["rank"]), cell(f["cve_id"]),
+                cell(f"{f['host_ip']} · {(f.get('affected_service') or '')[:26]}"),
+                badge(sev or "-", SEV_COLORS.get(sev, C_GRAY)),
+                cell("Confirmed" if f["confirmed"] else "Weak", color=(C_GREEN if f["confirmed"] else C_ORANGE)),
+                cell("Yes" if f["kev"] else "-", color=(C_RED if f["kev"] else C_GRAY)),
+                cell(f"{f['epss'] * 100:.0f}%" if f.get("epss") is not None else "-"),
+                badge(f.get("maturity") or "UNKNOWN", MAT_COLORS.get(f.get("maturity"), C_GRAY)),
+                cell(f"{f['score']:.0f}", bold=True),
             ])
-            vuln_sevs.append(v.severity or "")
-        v_tbl = Table(vuln_rows, colWidths=[3.5*cm, 2.5*cm, 1.8*cm, 4*cm, 1.8*cm, W-13.6*cm], repeatRows=1)
-        vc = [
-            ("BACKGROUND", (0, 0), (-1, 0), C_BLUE),
-            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-            ("FONTSIZE", (0, 0), (-1, -1), 8),
-            ("GRID", (0, 0), (-1, -1), 0.3, C_BORDER),
-            ("PADDING", (0, 0), (-1, -1), 4),
-        ]
-        for i, sev in enumerate(vuln_sevs):
-            rc = SEV_COLORS.get(sev, C_GRAY)
-            vc.append(("BACKGROUND", (1, i+1), (1, i+1), colors.Color(rc.red, rc.green, rc.blue, alpha=0.25)))
-            vc.append(("TEXTCOLOR", (1, i+1), (1, i+1), rc))
-            vc.append(("FONTNAME", (1, i+1), (1, i+1), "Helvetica-Bold"))
-            if i % 2 == 0:
-                vc.append(("BACKGROUND", (0, i+1), (0, i+1), C_ROW_ALT))
-        v_tbl.setStyle(TableStyle(vc))
-        elems.append(v_tbl)
+        elems.append(table(rows, [0.8 * cm, 2.7 * cm, W - 13.6 * cm, 2.0 * cm, 1.6 * cm,
+                                  1.0 * cm, 1.2 * cm, 2.5 * cm, 1.5 * cm]))
+        elems.append(Spacer(1, 0.35 * cm))
+
+        elems.append(Paragraph("Analyst notes on the highest-priority findings", H2))
+        for f in findings[:8]:
+            a = assess_by_vuln.get(f["vuln_id"])
+            vuln = next((v for v in all_vulns if v.id == f["vuln_id"]), None)
+            match_txt = ("confirmed by CPE against the detected version" if f["confirmed"]
+                         else "a keyword-only match that should be verified (possible false positive)")
+            ev = []
+            if f["kev"]:
+                ev.append("is listed in CISA KEV (exploited in the wild)")
+            if f.get("epss") is not None:
+                ev.append(f"has an EPSS exploitation probability of {f['epss'] * 100:.0f}%")
+            if a and a.exploit_maturity and a.exploit_maturity != "UNKNOWN":
+                ev.append(f"has {a.exploit_maturity.lower()} exploit evidence")
+            ev_txt = ("It " + "; it ".join(ev) + ". ") if ev else "No public-exploit evidence was found. "
+            fix = _remediate(f)
+            desc = ""
+            if vuln and vuln.description:
+                desc = escape(vuln.description[:180].rsplit(" ", 1)[0]) + "… "
+            elems.append(body(
+                f"<b>{f['rank']}. {escape(f['cve_id'])}</b> — {escape(f.get('affected_service') or 'service')} "
+                f"on {escape(f['host_ip'])} ({escape((f.get('severity') or '').title())}, "
+                f"CVSS {f.get('cvss') if f.get('cvss') is not None else 'n/a'}, score {f['score']:.0f}/100). "
+                f"{desc}This finding is {match_txt}. {ev_txt}"
+                f"<b>Remediation:</b> {fix}."))
     else:
-        elems.append(_body("No critical or high severity CVEs found."))
+        elems.append(body("No vulnerabilities were correlated for this scan."))
     elems.append(PageBreak())
 
-    # ── SECTION 7: ATTACK PATH ANALYSIS ───────────────────────────────────────
-    elems.append(_h1("7. Attack Path Analysis"))
-    elems.append(_divider())
-
-    if ag:
-        elems.append(_body(f"Network Risk Level: <b>{ag.network_risk_level}</b>"))
-        elems.append(_body(f"Graph: {ag.node_count} nodes · {ag.edge_count} edges · {ag.path_count} paths"))
-        elems.append(Spacer(1, 0.3 * cm))
-
+    # ══ 4. ATTACK PATHS ═════════════════════════════════════════════════════
+    elems.append(h1("4", "Attack paths"))
+    elems.append(divider())
     if attack_paths:
-        path_rows = [["#", "Entry Point", "Target", "Hops", "Score", "Severity"]]
-        path_sevs = []
-        for i, p in enumerate(attack_paths[:10]):
-            path_rows.append([
-                str(i + 1),
-                p.entry_ip or "—",
-                p.target_ip or "—",
-                str(p.hop_count),
-                f"{p.total_score:.1f}",
-                p.severity or "—",
-            ])
-            path_sevs.append(p.severity or "")
-        pt_tbl = Table(path_rows, colWidths=[1*cm, 4*cm, 4*cm, 2*cm, 2.5*cm, W-13.5*cm])
-        ptc = [
-            ("BACKGROUND", (0, 0), (-1, 0), C_BLUE),
-            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-            ("FONTSIZE", (0, 0), (-1, -1), 9),
-            ("GRID", (0, 0), (-1, -1), 0.3, C_BORDER),
-            ("PADDING", (0, 0), (-1, -1), 5),
-        ]
-        for i, sev in enumerate(path_sevs):
-            rc = SEV_COLORS.get(sev, C_GRAY)
-            ptc.append(("BACKGROUND", (5, i+1), (5, i+1), colors.Color(rc.red, rc.green, rc.blue, alpha=0.25)))
-            ptc.append(("TEXTCOLOR", (5, i+1), (5, i+1), rc))
-            ptc.append(("FONTNAME", (5, i+1), (5, i+1), "Helvetica-Bold"))
-        pt_tbl.setStyle(TableStyle(ptc))
-        elems.append(pt_tbl)
+        elems.append(body(
+            f"The attack-path model identified <b>{ag.path_count}</b> plausible path(s); the most "
+            f"significant are listed below with their justification and MITRE ATT&amp;CK references."))
+        rows = [[cell("#", bold=True, color=colors.white), cell("Score", bold=True, color=colors.white),
+                 cell("Severity", bold=True, color=colors.white), cell("Justification", bold=True, color=colors.white)]]
+        for i, p in enumerate(attack_paths[:6], 1):
+            sev = (p.severity or "").upper()
+            rows.append([cell(i, bold=True), cell(f"{p.total_score:.0f}", bold=True),
+                         badge(sev or "-", SEV_COLORS.get(sev, C_GRAY)),
+                         cell((p.justification or "").replace("→", "->"))])
+        elems.append(table(rows, [0.9 * cm, 1.4 * cm, 2.0 * cm, W - 4.3 * cm]))
+        elems.append(Spacer(1, 0.25 * cm))
+        mitre = {}
+        for p in attack_paths[:6]:
+            for t in json.loads(p.mitre_json or "[]"):
+                mitre[t["id"]] = t["name"]
+        if mitre:
+            tags = ", ".join(f"{k} ({escape(v)})" for k, v in sorted(mitre.items()))
+            elems.append(body(f"<b>MITRE ATT&amp;CK techniques referenced:</b> {tags}."))
+        elems.append(note("this is a heuristic, evidence-based model, not a formal attack graph "
+                          "(MulVAL). Paths rank plausible routes from the real evidence for analyst "
+                          "review; they do not prove reachability or chain exploit preconditions."))
     else:
-        elems.append(_body("No attack paths detected for this scan."))
+        elems.append(body("No attack paths were generated for this scan."))
     elems.append(PageBreak())
 
-    # ── SECTION 8: EXPLOITABILITY ASSESSMENT ──────────────────────────────────
-    elems.append(_h1("8. Exploitability Assessment"))
-    elems.append(_divider())
-
-    if assessments:
-        # Maturity distribution
-        mat_counts = {}
-        for a in assessments:
-            mat_counts[a.exploit_maturity] = mat_counts.get(a.exploit_maturity, 0) + 1
-        mat_rows = [["Exploit Maturity", "Count"]]
-        for m in ("WEAPONIZED", "FUNCTIONAL", "POC", "THEORETICAL", "UNPROVEN"):
-            if mat_counts.get(m, 0) > 0:
-                mat_rows.append([m, str(mat_counts[m])])
-        mat_tbl = Table(mat_rows, colWidths=[5*cm, 3*cm])
-        mc = [
-            ("BACKGROUND", (0, 0), (-1, 0), C_BLUE),
-            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-            ("FONTSIZE", (0, 0), (-1, -1), 9),
-            ("GRID", (0, 0), (-1, -1), 0.3, C_BORDER),
-            ("PADDING", (0, 0), (-1, -1), 5),
-        ]
-        for i, m in enumerate([r[0] for r in mat_rows[1:]]):
-            rc = MATURITY_COLORS.get(m, C_GRAY)
-            mc.append(("BACKGROUND", (0, i+1), (0, i+1), colors.Color(rc.red, rc.green, rc.blue, alpha=0.2)))
-            mc.append(("TEXTCOLOR", (0, i+1), (0, i+1), rc))
-            mc.append(("FONTNAME", (0, i+1), (0, i+1), "Helvetica-Bold"))
-        mat_tbl.setStyle(TableStyle(mc))
-        elems.append(mat_tbl)
-        elems.append(Spacer(1, 0.5 * cm))
-
-        # Top dangerous
-        elems.append(_h3("Top 10 Most Dangerous Vulnerabilities"))
-        top10 = sorted(assessments, key=lambda a: a.exploitability_score, reverse=True)[:10]
-        t10_rows = [["CVE ID", "Maturity", "Score", "Attack Type", "Lateral Mvmt", "Host"]]
-        t10_mat = []
-        for a in top10:
-            host_ip = next((h.ip for h in hosts if h.id == a.host_id), "—")
-            t10_rows.append([
-                a.cve_id or "—",
-                a.exploit_maturity or "—",
-                f"{a.exploitability_score:.1f}",
-                a.attack_type or "—",
-                a.lateral_movement_potential or "—",
-                host_ip,
-            ])
-            t10_mat.append(a.exploit_maturity or "")
-        t10_tbl = Table(t10_rows, colWidths=[3.5*cm, 3*cm, 2*cm, 3*cm, 3*cm, W-14.5*cm], repeatRows=1)
-        t10c = [
-            ("BACKGROUND", (0, 0), (-1, 0), C_BLUE),
-            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-            ("FONTSIZE", (0, 0), (-1, -1), 8),
-            ("GRID", (0, 0), (-1, -1), 0.3, C_BORDER),
-            ("PADDING", (0, 0), (-1, -1), 4),
-        ]
-        for i, mat in enumerate(t10_mat):
-            rc = MATURITY_COLORS.get(mat, C_GRAY)
-            t10c.append(("BACKGROUND", (1, i+1), (1, i+1), colors.Color(rc.red, rc.green, rc.blue, alpha=0.2)))
-            t10c.append(("TEXTCOLOR", (1, i+1), (1, i+1), rc))
-            t10c.append(("FONTNAME", (1, i+1), (1, i+1), "Helvetica-Bold"))
-        t10_tbl.setStyle(TableStyle(t10c))
-        elems.append(t10_tbl)
-    else:
-        elems.append(_body("No exploitability assessments available for this scan."))
-    elems.append(PageBreak())
-
-    # ── SECTION 9: RISK CLASSIFICATION ────────────────────────────────────────
-    elems.append(_h1("9. Risk Classification"))
-    elems.append(_divider())
-
-    # Per-host risk table
-    host_risk_rows = [["Host IP", "Hostname", "CVEs", "Max Severity", "Weaponized", "Patch Priority"]]
+    # ══ 5. TOPOLOGY & ROLES ═════════════════════════════════════════════════
+    elems.append(h1("5", "Topology & host roles"))
+    elems.append(divider())
+    elems.append(body(
+        "Each host is classified by the role its observed services suggest. A host may hold "
+        "several roles; the table lists them in order of significance."))
+    rows = [[cell("Host", bold=True, color=colors.white), cell("Inferred role(s)", bold=True, color=colors.white),
+             cell("OS", bold=True, color=colors.white), cell("Open ports", bold=True, color=colors.white),
+             cell("CVEs", bold=True, color=colors.white), cell("Max severity", bold=True, color=colors.white)]]
     for h in hosts:
-        h_assessments = [a for a in assessments if a.host_id == h.id]
-        h_weaponized = sum(1 for a in h_assessments if a.exploit_maturity == "WEAPONIZED")
-        h_immediate = sum(1 for a in h_assessments if a.patch_priority == "IMMEDIATE")
-        host_risk_rows.append([
-            h.ip or "—",
-            (h.hostname or "—")[:20],
-            str(h.vuln_count),
-            h.max_severity() or "—",
-            str(h_weaponized),
-            "IMMEDIATE" if h_immediate > 0 else ("URGENT" if h_assessments else "MONITOR"),
-        ])
-    hr_tbl = Table(host_risk_rows, colWidths=[3*cm, 4*cm, 2*cm, 3*cm, 3*cm, W-15*cm], repeatRows=1)
-    hr_tbl.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), C_BLUE),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, -1), 8),
-        ("GRID", (0, 0), (-1, -1), 0.3, C_BORDER),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, C_ROW_ALT]),
-        ("PADDING", (0, 0), (-1, -1), 4),
-    ]))
-    elems.append(hr_tbl)
+        role = classify_host(h.ports or [])
+        role_txt = ", ".join(ROLE_LABELS.get(r, r) for r in role["roles"])
+        sev = h.max_severity() or "-"
+        rows.append([cell(h.ip or "-"), cell(role_txt), cell((h.os or "Unknown")[:26]),
+                     cell(h.open_ports_count), cell(h.vuln_count),
+                     badge(sev, SEV_COLORS.get(sev, C_GRAY))])
+    elems.append(table(rows, [3.0 * cm, W - 12.3 * cm, 4.0 * cm, 1.8 * cm, 1.2 * cm, 2.3 * cm]))
+    elems.append(Spacer(1, 0.2 * cm))
+    elems.append(note("roles are inferred from observed services, not certified — e.g. an open "
+                      "port 53 does not prove an authoritative DNS server."))
     elems.append(PageBreak())
 
-    # ── SECTION 10: REMEDIATION PLAN ──────────────────────────────────────────
-    elems.append(_h1("10. Remediation Plan"))
-    elems.append(_divider())
-
-    priority_order = {"IMMEDIATE": 0, "CRITICAL": 0, "URGENT": 1, "HIGH": 1, "SCHEDULED": 2, "MEDIUM": 2, "MONITOR": 3, "LOW": 3}
-    sorted_rem = sorted(remediation_items, key=lambda r: priority_order.get(r.priority or "", 9))
-
-    if sorted_rem:
-        rem_rows = [["Priority", "Title", "Category", "Effort", "Host"]]
-        rem_pris = []
-        for r in sorted_rem[:30]:
-            host_ip = next((h.ip for h in hosts if h.id == r.host_id), "—")
-            rem_rows.append([
-                r.priority or "—",
-                (r.title or "—")[:40],
-                r.category or "—",
-                r.effort or "—",
-                host_ip,
-            ])
-            rem_pris.append(r.priority or "")
-        r_tbl = Table(rem_rows, colWidths=[2.5*cm, 7*cm, 2.5*cm, 2*cm, W-14*cm], repeatRows=1)
-        rc2 = [
-            ("BACKGROUND", (0, 0), (-1, 0), C_BLUE),
-            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-            ("FONTSIZE", (0, 0), (-1, -1), 8),
-            ("GRID", (0, 0), (-1, -1), 0.3, C_BORDER),
-            ("PADDING", (0, 0), (-1, -1), 4),
-        ]
-        for i, pri in enumerate(rem_pris):
-            pc = PRIORITY_COLORS.get(pri, C_GRAY)
-            rc2.append(("BACKGROUND", (0, i+1), (0, i+1), colors.Color(pc.red, pc.green, pc.blue, alpha=0.25)))
-            rc2.append(("TEXTCOLOR", (0, i+1), (0, i+1), pc))
-            rc2.append(("FONTNAME", (0, i+1), (0, i+1), "Helvetica-Bold"))
-            if i % 2 == 1:
-                rc2.append(("BACKGROUND", (1, i+1), (-1, i+1), C_ROW_ALT))
-        r_tbl.setStyle(TableStyle(rc2))
-        elems.append(r_tbl)
-
-        # Detailed steps for top 5 IMMEDIATE items
-        immediate_items = [r for r in sorted_rem if r.priority in ("IMMEDIATE", "CRITICAL")][:5]
-        if immediate_items:
-            elems.append(Spacer(1, 0.5 * cm))
-            elems.append(_h3("Immediate Action Details"))
-            for r in immediate_items:
-                elems.append(_body(f"<b>{r.title}</b> — {r.description or ''}"))
-                try:
-                    steps = json.loads(r.steps_json or "[]")
-                    for s in steps[:5]:
-                        elems.append(_body(f"  • {s}"))
-                except Exception:
-                    pass
-                elems.append(Spacer(1, 0.2 * cm))
+    # ══ 6. TECHNICAL APPENDIX ═══════════════════════════════════════════════
+    elems.append(h1("6", "Technical appendix"))
+    elems.append(divider())
+    elems.append(Paragraph("A. Open ports &amp; services", H2))
+    prows = [[cell("Host", bold=True, color=colors.white), cell("Port", bold=True, color=colors.white),
+              cell("Proto", bold=True, color=colors.white), cell("Service", bold=True, color=colors.white),
+              cell("Version", bold=True, color=colors.white)]]
+    for h in hosts:
+        for p in [p for p in (h.ports or []) if p.get("state") == "open"]:
+            prows.append([cell(h.ip or "-"), cell(p.get("port", "")), cell(p.get("protocol", "tcp")),
+                          cell((p.get("service") or "-")[:22]), cell((p.get("version") or "-")[:46])])
+    if len(prows) > 1:
+        elems.append(table(prows, [3.0 * cm, 1.4 * cm, 1.6 * cm, 3.4 * cm, W - 9.4 * cm]))
     else:
-        elems.append(_body("No remediation items generated for this scan."))
-    elems.append(PageBreak())
+        elems.append(body("No open ports recorded."))
+    elems.append(Spacer(1, 0.4 * cm))
 
-    # ── SECTION 11: FINAL RISK SCORE ──────────────────────────────────────────
-    elems.append(_h1("11. Final Security Score"))
-    elems.append(_divider())
-
-    score_breakdown = [
-        ["Component", "Deduction", "Detail"],
-        ["Base Score", "100", "Starting security score"],
-        ["Vulnerabilities", f"−{vuln_penalty}", f"{len(all_vulns)} CVE(s) × 2 pts each (max 50)"],
-        ["Exploitable CVEs", f"−{exploit_penalty}", f"{weaponized + functional} weaponized/functional × 5 pts (max 30)"],
-        ["Critical Attack Paths", f"−{path_penalty}", f"Critical/high paths × 4 pts (max 20)"],
-        ["Final Score", str(security_score), score_label],
-    ]
-    sb_tbl = Table(score_breakdown, colWidths=[5*cm, 3*cm, W-8*cm])
-    sbc = [
-        ("BACKGROUND", (0, 0), (-1, 0), C_BLUE),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, -1), 9),
-        ("GRID", (0, 0), (-1, -1), 0.3, C_BORDER),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, C_ROW_ALT]),
-        ("PADDING", (0, 0), (-1, -1), 5),
-        ("BACKGROUND", (0, 5), (-1, 5), _score_color(security_score)),
-        ("TEXTCOLOR", (0, 5), (-1, 5), colors.white),
-        ("FONTNAME", (0, 5), (-1, 5), "Helvetica-Bold"),
-    ]
-    sb_tbl.setStyle(TableStyle(sbc))
-    elems.append(sb_tbl)
-    elems.append(Spacer(1, 1 * cm))
-
-    # Recommendation
-    if security_score >= 80:
-        rec = "Network security posture is GOOD. Maintain regular scanning cadence and apply scheduled patches."
-    elif security_score >= 60:
-        rec = "Security posture is MODERATE. Address high-severity CVEs and harden exposed services within 30 days."
-    elif security_score >= 40:
-        rec = "Security posture is AT RISK. Immediate patching of critical CVEs and network segmentation required."
+    elems.append(Paragraph("B. All correlated CVEs", H2))
+    if all_vulns:
+        crows = [[cell("CVE", bold=True, color=colors.white), cell("Host", bold=True, color=colors.white),
+                  cell("Service", bold=True, color=colors.white), cell("CVSS", bold=True, color=colors.white),
+                  cell("Sev", bold=True, color=colors.white), cell("Match", bold=True, color=colors.white),
+                  cell("KEV", bold=True, color=colors.white)]]
+        for v in sorted(all_vulns, key=lambda x: -(x.cvss or 0)):
+            host_ip = host_by_id.get(v.host_id).ip if host_by_id.get(v.host_id) else "-"
+            sev = (v.severity or "-").upper()
+            crows.append([cell(v.cve_id), cell(host_ip), cell((v.affected_service or "-")[:24]),
+                          cell(v.cvss if v.cvss is not None else "-"),
+                          badge(sev, SEV_COLORS.get(sev, C_GRAY)),
+                          cell("CPE" if (v.match_type or "cpe") == "cpe" else "weak",
+                               color=(C_GREEN if (v.match_type or "cpe") == "cpe" else C_ORANGE)),
+                          cell("Y" if v.kev else "-", color=(C_RED if v.kev else C_GRAY))])
+        elems.append(table(crows, [2.6 * cm, 2.6 * cm, W - 11.1 * cm, 1.4 * cm, 1.5 * cm, 1.6 * cm, 1.4 * cm]))
     else:
-        rec = "Security posture is CRITICAL. Emergency response required — weaponized exploits and/or critical attack paths exist."
-    elems.append(_body(f"<b>Recommendation:</b> {rec}"))
-    elems.append(Spacer(1, 1 * cm))
+        elems.append(body("No CVEs were correlated."))
 
-    footer_style = ParagraphStyle("foot", parent=styles["Normal"], fontSize=8,
-                                  textColor=C_GRAY, alignment=TA_CENTER)
+    # Footer
+    elems.append(Spacer(1, 0.8 * cm))
+    elems.append(HRFlowable(width="100%", thickness=0.5, color=C_BORDER, spaceAfter=4))
     elems.append(Paragraph(
-        f"Generated by ViperV2 v2.0.0 · {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')} · "
-        "This report is for authorized security assessment purposes only.",
-        footer_style,
-    ))
+        f"VIPER · Network Security Assessment · generated {utcnow().strftime('%Y-%m-%d %H:%M UTC')} · "
+        "Authorized use only — confidential.",
+        _style("foot", fontSize=7.5, textColor=C_GRAY, alignment=TA_CENTER)))
 
     doc.build(elems)
     return buf.getvalue()

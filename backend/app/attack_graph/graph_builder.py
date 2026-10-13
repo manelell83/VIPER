@@ -6,20 +6,19 @@ All relationships are derived from real scan data — nothing is hardcoded.
 
 import json
 import logging
-from datetime import datetime
 from uuid import uuid4
 
 from sqlalchemy.orm import Session
 
-from app.models.scan import ScanSession, Host
+from app.models.scan import Host
 from app.vulnerability_scanner.models import Vulnerability
+from app.exploitability.models import ExploitabilityAssessment
 from app.attack_graph.models import AttackGraph, AttackNode, AttackEdge
 from app.attack_graph.attack_rules import evaluate_host_rules
+from app.attack_graph import scoring
+from app.core.timeutil import utcnow
 
 log = logging.getLogger(__name__)
-
-ATTACKER_NODE_ID = "ATTACKER"
-
 
 def build_attack_graph(scan_id: str, db: Session) -> "AttackGraph | None":
     """
@@ -39,14 +38,17 @@ def build_attack_graph(scan_id: str, db: Session) -> "AttackGraph | None":
     ag = AttackGraph(
         id=str(uuid4()),
         scan_id=scan_id,
-        generated_at=datetime.utcnow(),
+        generated_at=utcnow(),
     )
     db.add(ag)
     db.flush()
 
     # ── Virtual attacker node ────────────────────────────────────────────────
+    # Each graph gets its own attacker node with a unique id (the id is the
+    # table's primary key, so a fixed id would collide across scans).
+    # Other modules find it by node_type == "ATTACKER".
     attacker = AttackNode(
-        id=ATTACKER_NODE_ID,
+        id=str(uuid4()),
         graph_id=ag.id,
         host_id=None,
         node_type="ATTACKER",
@@ -58,6 +60,10 @@ def build_attack_graph(scan_id: str, db: Session) -> "AttackGraph | None":
         metadata_json=json.dumps({}),
     )
     db.add(attacker)
+
+    # Phase-4 exploitability evidence for every vuln in the scan (for hop scoring)
+    assessments_by_vuln = {a.vuln_id: a for a in db.query(ExploitabilityAssessment)
+                           .filter(ExploitabilityAssessment.scan_id == scan_id).all()}
 
     # ── Build host nodes ─────────────────────────────────────────────────────
     host_nodes: dict[str, AttackNode] = {}
@@ -125,20 +131,25 @@ def build_attack_graph(scan_id: str, db: Session) -> "AttackGraph | None":
         for rule, score, cve_ids in matched:
             if not rule.is_entry_point:
                 continue
-            best_cvss = max((v.cvss or 0) for v in vulns) if vulns else 0.0
+            hop_vulns = [v for v in vulns if v.cve_id in cve_ids]
+            best_cvss = max((v.cvss or 0) for v in hop_vulns) if hop_vulns else 0.0
+            port = rule.ports[0] if rule.ports else None
+            svc = ", ".join(rule.services[:3]) if rule.services else None
+            hop = scoring.score_hop(
+                is_entry=True, is_pivot=rule.is_pivot, attack_type=rule.attack_type,
+                source_ip="0.0.0.0", source_label="ATTACKER", target_ip=host.ip,
+                port=port, service=svc, vulns=hop_vulns,
+                assessments_by_vuln=assessments_by_vuln, target_critical=target_node.is_critical,
+            )
             edge = AttackEdge(
-                id=str(uuid4()),
-                graph_id=ag.id,
-                source_node_id=ATTACKER_NODE_ID,
-                target_node_id=target_node.id,
-                attack_type=rule.attack_type,
-                attack_vector=rule.attack_vector,
-                port=rule.ports[0] if rule.ports else None,
-                service=", ".join(rule.services[:3]) if rule.services else None,
-                cvss=best_cvss,
-                cve_ids_json=json.dumps(cve_ids),
-                score=score,
-                description=rule.description,
+                id=str(uuid4()), graph_id=ag.id,
+                source_node_id=attacker.id, target_node_id=target_node.id,
+                attack_type=rule.attack_type, attack_vector=rule.attack_vector,
+                port=port, service=svc, cvss=best_cvss,
+                cve_ids_json=json.dumps(cve_ids), score=hop["score"], description=rule.description,
+                reachability=hop["reachability"], exploitability=hop["exploitability"], impact=hop["impact"],
+                factors_json=json.dumps(hop["factors"]), mitre_json=json.dumps(hop["mitre"]),
+                justification=hop["justification"],
             )
             db.add(edge)
             entry_host_ids.add(host.id)
@@ -172,24 +183,27 @@ def build_attack_graph(scan_id: str, db: Session) -> "AttackGraph | None":
 
             best_rule, best_score, best_cves = max(dst_matches, key=lambda x: x[1])
             dst_vulns = host_vulns[dst_host.id]
-            best_cvss = max((v.cvss or 0) for v in dst_vulns) if dst_vulns else 0.0
-
+            hop_vulns = [v for v in dst_vulns if v.cve_id in best_cves]
+            best_cvss = max((v.cvss or 0) for v in hop_vulns) if hop_vulns else 0.0
+            port = best_rule.ports[0] if best_rule.ports else None
+            svc = ", ".join(best_rule.services[:3]) if best_rule.services else None
+            hop = scoring.score_hop(
+                is_entry=False, is_pivot=best_rule.is_pivot, attack_type="LATERAL_MOVEMENT",
+                source_ip=src_host.ip, source_label=src_host.hostname or src_host.ip,
+                target_ip=dst_host.ip, port=port, service=svc, vulns=hop_vulns,
+                assessments_by_vuln=assessments_by_vuln,
+                target_critical=host_nodes[dst_host.id].is_critical,
+            )
             edge = AttackEdge(
-                id=str(uuid4()),
-                graph_id=ag.id,
-                source_node_id=host_nodes[src_host_id].id,
-                target_node_id=host_nodes[dst_host.id].id,
-                attack_type="LATERAL_MOVEMENT",
-                attack_vector=f"Pivot → {best_rule.attack_vector}",
-                port=best_rule.ports[0] if best_rule.ports else None,
-                service=", ".join(best_rule.services[:3]) if best_rule.services else None,
-                cvss=best_cvss,
-                cve_ids_json=json.dumps(best_cves),
-                score=round(best_score * 0.85, 1),
-                description=(
-                    f"Compromised {src_host.ip} can pivot to {dst_host.ip} "
-                    f"via {best_rule.name}."
-                ),
+                id=str(uuid4()), graph_id=ag.id,
+                source_node_id=host_nodes[src_host_id].id, target_node_id=host_nodes[dst_host.id].id,
+                attack_type="LATERAL_MOVEMENT", attack_vector=f"Pivot → {best_rule.attack_vector}",
+                port=port, service=svc, cvss=best_cvss,
+                cve_ids_json=json.dumps(best_cves), score=hop["score"],
+                description=f"Compromised {src_host.ip} can pivot to {dst_host.ip} via {best_rule.name}.",
+                reachability=hop["reachability"], exploitability=hop["exploitability"], impact=hop["impact"],
+                factors_json=json.dumps(hop["factors"]), mitre_json=json.dumps(hop["mitre"]),
+                justification=hop["justification"],
             )
             db.add(edge)
 

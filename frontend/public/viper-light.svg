@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" role="img" aria-label="VIPER">
+  <!-- VIPER mark, light version: crimson fanged V on cream -->
+  <rect width="48" height="48" rx="11" fill="#f2ece3"/>
+  <path d="M6 8H17L24 27L31 8H42L28.5 44L24 37L19.5 44Z" fill="#c01f3c"/>
+</svg>

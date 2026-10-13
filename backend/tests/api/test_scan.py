@@ -1,190 +1,221 @@
 """
-Unit tests for scan API routes.
+API tests for the scan routes (/scan/*).
 
-Tests:
-  - POST /scan/network with valid interface
-  - POST /scan/network with invalid interface
-  - POST /scan/domain with valid domain
-  - GET /scan/{scan_id}
-  - Scan status and persistence
-  - Concurrent scans
-  - Error handling
+The real scan runs as a background task (ARP, nmap, NVD...). These tests
+replace it with a recorder so they only check what the route itself does:
+validate input, persist a ScanSession and schedule the right background job.
 """
 
 import pytest
-import json
-from unittest.mock import patch, MagicMock
+from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
+from app.api.routes import scan as scan_routes
 from app.models.scan import ScanSession
-from fastapi.testclient import TestClient
+
+# The user's confirmation that they may scan the target (required by the API)
+CONFIRMED = {"authorization_confirmed": True}
 
 
-class TestScanRoutes:
-    """Test scan API routes."""
+@pytest.fixture
+def scheduled(monkeypatch):
+    """Replace both background scan jobs and record how they were called."""
+    calls = []
 
-    def test_post_scan_network_success(self, client: TestClient, test_db: Session, mock_arp, mock_port_scanner):
-        """Test POST /scan/network with valid interface."""
-        response = client.post(
-            "/scan/network",
-            json={"interface": "eth0"},
-        )
+    async def fake_network(scan_id, interface):
+        calls.append(("network", scan_id, interface))
 
-        # Expect 202 Accepted (background task)
-        assert response.status_code in [202, 200]
-        data = response.json()
-        assert "scan_id" in data
+    async def fake_domain(scan_id, target):
+        calls.append(("domain", scan_id, target))
 
-    def test_post_scan_network_with_timeout(self, client: TestClient, test_db: Session):
-        """Test POST /scan/network handles timeout."""
-        with patch("app.scanners.scan_engine.arp_scan") as mock_arp:
-            mock_arp.side_effect = TimeoutError("ARP timeout")
+    monkeypatch.setattr(scan_routes, "_background_network_scan", fake_network)
+    monkeypatch.setattr(scan_routes, "_background_domain_scan", fake_domain)
+    # Pretend this machine has exactly one interface, "eth0"
+    monkeypatch.setattr(scan_routes, "get_interface_by_name",
+                        lambda name: {"name": "eth0", "subnet": "10.0.0.0/24"} if name == "eth0" else None)
+    return calls
 
-            response = client.post(
-                "/scan/network",
-                json={"interface": "eth0"},
-            )
 
-            # Should handle timeout gracefully
-            assert response.status_code in [202, 200, 500]
+class TestStartNetworkScan:
 
-    def test_post_scan_domain_success(self, client: TestClient, test_db: Session):
-        """Test POST /scan/domain with valid domain."""
-        with patch("app.scanners.domain_recon.resolve_domain") as mock_resolve:
-            mock_resolve.return_value = {"ip": "93.184.216.34", "hostname": "example.com"}
+    def test_creates_pending_session_and_schedules_job(self, client: TestClient, test_db: Session, scheduled):
+        response = client.post("/scan/network", json={"interface": "eth0", **CONFIRMED})
 
-            response = client.post(
-                "/scan/domain",
-                json={"domain": "example.com"},
-            )
+        assert response.status_code == 200
+        body = response.json()
+        scan_id = body["scan_id"]
+        assert body["websocket"] == f"/ws/{scan_id}"
 
-            assert response.status_code in [202, 200]
-            data = response.json()
-            assert "scan_id" in data
+        scan = test_db.query(ScanSession).filter(ScanSession.id == scan_id).one()
+        assert scan.type == "network"
+        assert scan.interface == "eth0"
+        assert scan.status == "pending"
 
-    def test_get_scan_status_success(self, client: TestClient, test_db: Session):
-        """Test GET /scan/{scan_id} returns scan details."""
-        # Create a test scan
-        scan = ScanSession(
-            type="network",
-            target="192.168.1.0/24",
-            status="completed",
-        )
+        assert scheduled == [("network", scan_id, "eth0")]
+
+    def test_missing_interface_is_rejected(self, client: TestClient, scheduled):
+        response = client.post("/scan/network", json={})
+
+        assert response.status_code == 422
+        assert scheduled == []
+
+    def test_unknown_interface_is_rejected(self, client: TestClient, test_db: Session, scheduled):
+        response = client.post("/scan/network", json={"interface": "does-not-exist", **CONFIRMED})
+
+        assert response.status_code == 422
+        assert scheduled == []
+        assert test_db.query(ScanSession).count() == 0
+
+
+class TestStartDomainScan:
+
+    @pytest.mark.parametrize("target", [
+        "scanme.nmap.org", "127.0.0.1", "localhost", "my-host.lan.", "xn--bcher-kva.example",
+    ])
+    def test_ipv4_and_hostnames_are_accepted(self, client: TestClient, scheduled, target):
+        assert client.post("/scan/domain", json={"target": target, **CONFIRMED}).status_code == 200
+
+    def test_valid_target_is_accepted(self, client: TestClient, test_db: Session, scheduled):
+        response = client.post("/scan/domain", json={"target": "  scanme.nmap.org  ", **CONFIRMED})
+
+        assert response.status_code == 200
+        scan_id = response.json()["scan_id"]
+
+        scan = test_db.query(ScanSession).filter(ScanSession.id == scan_id).one()
+        assert scan.type == "domain"
+        assert scan.target == "scanme.nmap.org"   # surrounding whitespace stripped
+        assert scheduled == [("domain", scan_id, "scanme.nmap.org")]
+
+    def test_empty_target_is_rejected(self, client: TestClient, scheduled):
+        response = client.post("/scan/domain", json={"target": "   ", **CONFIRMED})
+
+        assert response.status_code == 422
+        assert scheduled == []
+
+    def test_too_long_target_is_rejected(self, client: TestClient, scheduled):
+        response = client.post("/scan/domain", json={"target": "a" * 254, **CONFIRMED})
+
+        assert response.status_code == 422
+        assert scheduled == []
+
+    @pytest.mark.parametrize("target", [
+        # nmap option injection (python-nmap splits the host string on spaces)
+        "nothing.invalid -oN pwned.txt",
+        "-iL /etc/passwd",
+        "--script=http-shellshock example.com",
+        "example.com	-oX out.xml",
+        # shell metacharacters
+        "example.com; rm -rf /",
+        "example.com | id",
+        "$(whoami).example.com",
+        "`id`.example.com",
+        # malformed hostnames / unsupported targets
+        "-leading-hyphen.com",
+        "trailing-hyphen-.com",
+        "under_score.com",
+        "a" * 64 + ".com",          # label longer than 63 characters
+        "10.0.0.0/24",              # CIDR ranges are for the network scan
+        "::1",                      # IPv6 is not supported
+    ])
+    def test_invalid_targets_are_rejected(self, client: TestClient, test_db: Session, scheduled, target):
+        response = client.post("/scan/domain", json={"target": target, **CONFIRMED})
+
+        assert response.status_code == 422
+        assert scheduled == []
+        assert test_db.query(ScanSession).count() == 0
+
+
+class TestScanStatus:
+
+    def test_returns_scan_details(self, client: TestClient, test_db: Session):
+        scan = ScanSession(type="network", target="192.168.1.0/24", status="completed")
         test_db.add(scan)
         test_db.commit()
 
-        response = client.get(f"/scan/{scan.id}")
+        response = client.get(f"/scan/status/{scan.id}")
 
         assert response.status_code == 200
-        data = response.json()
-        assert data["id"] == scan.id
-        assert data["status"] == "completed"
+        body = response.json()
+        assert body["id"] == scan.id
+        assert body["status"] == "completed"
+        assert body["hosts_count"] == 0
 
-    def test_get_scan_status_not_found(self, client: TestClient):
-        """Test GET /scan/{scan_id} returns 404 for nonexistent scan."""
-        response = client.get("/scan/nonexistent-scan-id")
+    def test_reflects_status_changes(self, client: TestClient, test_db: Session):
+        scan = ScanSession(type="network", target="192.168.1.0/24", status="pending")
+        test_db.add(scan)
+        test_db.commit()
+
+        for status in ("running", "completed"):
+            scan.status = status
+            test_db.commit()
+            assert client.get(f"/scan/status/{scan.id}").json()["status"] == status
+
+    def test_unknown_scan_returns_404(self, client: TestClient):
+        response = client.get("/scan/status/does-not-exist")
 
         assert response.status_code == 404
 
-    def test_concurrent_scans_isolation(self, client: TestClient, test_db: Session):
-        """Test that concurrent scans are isolated."""
-        scan1 = ScanSession(type="network", target="192.168.1.0/24", status="pending")
-        scan2 = ScanSession(type="domain", target="example.com", status="pending")
-        test_db.add_all([scan1, scan2])
-        test_db.commit()
 
-        response1 = client.get(f"/scan/{scan1.id}")
-        response2 = client.get(f"/scan/{scan2.id}")
+class TestScanAuthorization:
+    """No active scan without an explicit, recorded authorization confirmation."""
 
-        assert response1.status_code == 200
-        assert response2.status_code == 200
-        assert response1.json()["id"] == scan1.id
-        assert response2.json()["id"] == scan2.id
+    @pytest.mark.parametrize("payload", [
+        {"target": "scanme.nmap.org"},                                    # missing
+        {"target": "scanme.nmap.org", "authorization_confirmed": False},
+        {"target": "scanme.nmap.org", "authorization_confirmed": None},
+        {"target": "scanme.nmap.org", "authorization_confirmed": "maybe"},
+        {"target": "scanme.nmap.org", "authorization_confirmed": "yes"},        # not a JSON true
+        {"target": "scanme.nmap.org", "authorization_confirmed": 1},
+    ])
+    def test_domain_scan_without_confirmation_is_refused(self, client: TestClient, test_db: Session, scheduled, payload):
+        response = client.post("/scan/domain", json=payload)
 
-    def test_scan_persistence_in_database(self, client: TestClient, test_db: Session):
-        """Test that scan is persisted in database."""
-        with patch("app.scanners.scan_engine.arp_scan") as mock_arp:
-            mock_arp.return_value = []  # No hosts found
+        assert response.status_code == 422
+        assert scheduled == []
+        assert test_db.query(ScanSession).count() == 0
 
-            response = client.post(
-                "/scan/network",
-                json={"interface": "eth0"},
-            )
+    def test_network_scan_without_confirmation_is_refused(self, client: TestClient, test_db: Session, scheduled):
+        response = client.post("/scan/network", json={"interface": "eth0"})
 
-            if response.status_code in [200, 202]:
-                data = response.json()
-                scan_id = data.get("scan_id")
+        assert response.status_code == 422
+        assert scheduled == []
+        assert test_db.query(ScanSession).count() == 0
 
-                if scan_id:
-                    # Verify scan was created in database
-                    scan = test_db.query(ScanSession).filter(ScanSession.id == scan_id).first()
-                    assert scan is not None
-                    assert scan.target == "eth0"
+    def test_confirmation_is_recorded_on_the_scan(self, client: TestClient, test_db: Session, scheduled):
+        from app.core.audit import AUTHORIZATION_STATEMENT
 
-    def test_scan_status_transitions(self, client: TestClient, test_db: Session):
-        """Test scan status transitions."""
-        scan = ScanSession(
-            type="network",
-            target="192.168.1.0/24",
-            status="pending",
-        )
-        test_db.add(scan)
-        test_db.commit()
+        scan_id = client.post("/scan/domain", json={"target": "scanme.nmap.org", **CONFIRMED}).json()["scan_id"]
 
-        # Initially pending
-        response = client.get(f"/scan/{scan.id}")
-        assert response.json()["status"] == "pending"
+        scan = test_db.query(ScanSession).filter(ScanSession.id == scan_id).one()
+        assert scan.authorized_by == "analyst-user"           # the authenticated user, not a client field
+        assert scan.authorized_at is not None
+        assert scan.authorization_statement == AUTHORIZATION_STATEMENT
 
-        # Update to running
-        scan.status = "running"
-        test_db.commit()
+        exposed = client.get(f"/scan/status/{scan_id}").json()["authorization"]
+        assert exposed["by"] == "analyst-user"
+        assert exposed["at"].endswith("Z")
 
-        response = client.get(f"/scan/{scan.id}")
-        assert response.json()["status"] == "running"
+    def test_network_scan_records_the_real_subnet(self, client: TestClient, test_db: Session, scheduled):
+        scan_id = client.post("/scan/network", json={"interface": "eth0", **CONFIRMED}).json()["scan_id"]
 
-        # Update to completed
-        scan.status = "completed"
-        test_db.commit()
+        scan = test_db.query(ScanSession).filter(ScanSession.id == scan_id).one()
+        assert scan.target == "10.0.0.0/24"
+        assert scan.authorized_by == "analyst-user"
 
-        response = client.get(f"/scan/{scan.id}")
-        assert response.json()["status"] == "completed"
+    def test_confirmation_is_written_to_the_audit_log_file(self, client: TestClient, scheduled):
+        from tests.conftest import AUDIT_LOG_FILE
 
+        scan_id = client.post("/scan/domain", json={"target": "scanme.nmap.org", **CONFIRMED}).json()["scan_id"]
 
-class TestScanErrorHandling:
-    """Test error handling in scan routes."""
+        with open(AUDIT_LOG_FILE, encoding="utf-8") as f:
+            lines = [line for line in f if f"scan_id={scan_id}" in line]
+        assert len(lines) == 1
+        assert "viper.audit" in lines[0]
+        assert "user=analyst-user" in lines[0]
+        assert "target=scanme.nmap.org" in lines[0]
+        assert "statement=" in lines[0]
 
-    def test_post_scan_invalid_interface(self, client: TestClient):
-        """Test POST /scan/network with invalid interface."""
-        response = client.post(
-            "/scan/network",
-            json={"interface": "invalid-interface-name-too-long-" * 10},
-        )
+    def test_statement_endpoint(self, client: TestClient):
+        from app.core.audit import AUTHORIZATION_STATEMENT
 
-        # Should return validation error
-        assert response.status_code in [400, 422]
-
-    def test_get_scan_with_malformed_id(self, client: TestClient):
-        """Test GET /scan/{scan_id} with malformed ID."""
-        response = client.get("/scan/not-a-uuid-format")
-
-        # Should return 404 or 422
-        assert response.status_code in [404, 422]
-
-    def test_database_transaction_consistency(self, test_db: Session):
-        """Test database transaction consistency."""
-        scan = ScanSession(
-            type="network",
-            target="192.168.1.0/24",
-            status="pending",
-        )
-        test_db.add(scan)
-        test_db.commit()
-        scan_id = scan.id
-
-        # Start transaction and rollback
-        scan.status = "modified"
-        test_db.rollback()
-
-        # Status should be reverted
-        retrieved = test_db.query(ScanSession).filter(ScanSession.id == scan_id).first()
-        assert retrieved.status == "pending"
+        assert client.get("/scan/authorization").json() == {"statement": AUTHORIZATION_STATEMENT}

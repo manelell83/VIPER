@@ -1,4 +1,6 @@
 import ipaddress
+import re
+import socket
 from typing import Dict, Any
 
 
@@ -14,13 +16,45 @@ def calculate_subnet(ip: str, netmask: str) -> Dict[str, Any]:
     }
 
 
+# RFC 1123 hostname label: 1-63 letters/digits/hyphens, not starting or ending
+# with a hyphen. This also rules out spaces and a leading "-", so a hostname
+# can never be interpreted as an nmap command-line option.
+_HOSTNAME_LABEL = re.compile(r"^(?!-)[A-Za-z0-9-]{1,63}(?<!-)$")
+
+
+def is_valid_hostname(value: str) -> bool:
+    if not value or len(value) > 253:
+        return False
+    labels = value[:-1].split(".") if value.endswith(".") else value.split(".")
+    return all(_HOSTNAME_LABEL.match(label) for label in labels)
+
+
+def is_ipv4(value: str) -> bool:
+    try:
+        ipaddress.IPv4Address(value)
+        return True
+    except ValueError:
+        return False
+
+
+def is_valid_scan_target(value: str) -> bool:
+    """A scan target must be an IPv4 address or a valid hostname.
+    (IPv6 is not supported: names are resolved to IPv4 and nmap runs without -6.)"""
+    return is_ipv4(value) or is_valid_hostname(value)
+
+
 def resolve_target(target: str) -> str:
-    """Resolve domain/hostname to IP address."""
-    import socket
+    """Resolve a hostname to an IPv4 address (IP addresses are returned as-is).
+
+    Raises ValueError if the name cannot be resolved: the unresolved input is
+    never passed on to the scanner.
+    """
+    if is_ipv4(target):
+        return target
     try:
         return socket.gethostbyname(target)
-    except socket.gaierror:
-        return target
+    except (socket.gaierror, UnicodeError) as exc:
+        raise ValueError(f"Could not resolve '{target}'") from exc
 
 
 def is_valid_ip(value: str) -> bool:
@@ -29,6 +63,12 @@ def is_valid_ip(value: str) -> bool:
         return True
     except ValueError:
         return False
+
+
+def network_size(cidr: str) -> int:
+    """Number of usable host addresses in a network (e.g. /24 -> 254, /16 -> 65534)."""
+    network = ipaddress.IPv4Network(cidr, strict=False)
+    return max(network.num_addresses - 2, 1)
 
 
 def is_valid_cidr(value: str) -> bool:

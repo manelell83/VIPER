@@ -26,6 +26,7 @@ def analyze_risk(ag: AttackGraph, db: Session) -> dict:
     edges = db.query(AttackEdge).filter(AttackEdge.graph_id == ag.id).all()
 
     node_map = {n.id: n for n in nodes}
+    attacker_ids = {n.id for n in nodes if n.node_type == "ATTACKER"}
 
     if not paths:
         return {
@@ -50,7 +51,7 @@ def analyze_risk(ag: AttackGraph, db: Session) -> dict:
     for path in paths:
         node_ids = json.loads(path.path_node_ids_json or "[]")
         for nid in node_ids:
-            if nid == "ATTACKER":
+            if nid in attacker_ids:
                 continue
             host_appearances[nid] += 1
             host_score_sum[nid] += path.total_score
@@ -73,7 +74,7 @@ def analyze_risk(ag: AttackGraph, db: Session) -> dict:
             }
 
     # ── Weakest entry point ──────────────────────────────────────────────────
-    entry_edges = [e for e in edges if e.source_node_id == "ATTACKER"]
+    entry_edges = [e for e in edges if e.source_node_id in attacker_ids]
     weakest_entry = None
     if entry_edges:
         easiest = max(entry_edges, key=lambda e: e.score)

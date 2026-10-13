@@ -2,31 +2,56 @@
 Pytest configuration and shared fixtures.
 
 Fixtures:
-  - test_db: In-memory SQLite database for isolated tests
-  - client: FastAPI TestClient connected to test_db
-  - mock_nvd: Mock NVD API responses
-  - mock_arp: Mock ARP scanner
-  - event_loop: Async event loop for asyncio tests
+  - test_db:      fresh in-memory SQLite database for each test
+  - client:       TestClient authenticated as an "analyst" user
+  - admin_client: TestClient authenticated as an "admin" user
+  - anon_client:  TestClient without any token
+All clients use test_db through the get_db dependency override.
 """
 
+import os
+
+# Configure the app *before* importing it: an in-memory database (so the
+# startup hook never creates a real viperv2.db file) and a test-only JWT secret.
+os.environ["DATABASE_URL"] = "sqlite://"
+os.environ["JWT_SECRET"] = "test-only-secret-not-used-anywhere-else-0123456789"
+# Audit records go to a temporary file, never into the repository
+import tempfile
+AUDIT_LOG_FILE = os.path.join(tempfile.mkdtemp(prefix="viper-audit-"), "audit.log")
+os.environ["AUDIT_LOG_FILE"] = AUDIT_LOG_FILE
+
 import pytest
-import asyncio
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.pool import StaticPool
 from fastapi.testclient import TestClient
-from unittest.mock import Mock, patch, MagicMock
 
 from app.main import app
 from app.core.database import Base, get_db
+from app.core.security import create_access_token, hash_password
+from app.models.user import User
+
+TEST_PASSWORD = "correct-horse-battery"
+# bcrypt is deliberately slow (~0.25 s); hash once and reuse for every test user
+TEST_PASSWORD_HASH = hash_password(TEST_PASSWORD)
 
 
-# In-memory SQLite database
 @pytest.fixture(scope="function")
 def test_db() -> Session:
-    """Create an in-memory SQLite database for each test."""
-    engine = create_engine("sqlite:///:memory:")
+    """Create an isolated in-memory SQLite database for each test.
 
-    # Enable foreign keys for SQLite
+    StaticPool makes every checkout return the *same* connection. Without it,
+    each new connection to "sqlite://" would open a brand-new, empty database,
+    and TestClient (which runs the app in another thread) would not see the
+    tables or rows created by the test.
+    """
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+
+    # SQLite ignores foreign keys unless this pragma is set per connection
     @event.listens_for(engine, "connect")
     def set_sqlite_pragma(dbapi_conn, connection_record):
         cursor = dbapi_conn.cursor()
@@ -34,106 +59,60 @@ def test_db() -> Session:
         cursor.close()
 
     Base.metadata.create_all(bind=engine)
-    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-    db = SessionLocal()
+    TestingSession = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    db = TestingSession()
 
     yield db
 
     db.close()
+    engine.dispose()
 
 
-# FastAPI TestClient
+def create_user(db: Session, username: str, role: str, is_active: bool = True) -> User:
+    user = User(username=username, email=f"{username}@example.com",
+                hashed_password=TEST_PASSWORD_HASH, role=role, is_active=is_active)
+    db.add(user)
+    db.commit()
+    return user
+
+
 @pytest.fixture(scope="function")
-def client(test_db: Session):
-    """Create a FastAPI TestClient with test database."""
+def make_client(test_db: Session):
+    """Factory: make_client(role) returns a TestClient using test_db,
+    with a valid bearer token for a user of that role (no token if role is None)."""
     def override_get_db():
-        try:
-            yield test_db
-        finally:
-            pass
+        yield test_db
 
     app.dependency_overrides[get_db] = override_get_db
+    opened = []
 
-    with TestClient(app) as test_client:
-        yield test_client
+    def _make(role: str | None):
+        test_client = TestClient(app)
+        test_client.__enter__()          # runs the app's startup (lifespan)
+        opened.append(test_client)
+        if role is not None:
+            user = (test_db.query(User).filter(User.username == f"{role}-user").first()
+                    or create_user(test_db, f"{role}-user", role))
+            test_client.headers["Authorization"] = f"Bearer {create_access_token(user.id)}"
+        return test_client
 
+    yield _make
+
+    for test_client in opened:
+        test_client.__exit__(None, None, None)
     app.dependency_overrides.clear()
 
 
-# Event loop for async tests
-@pytest.fixture(scope="function")
-def event_loop():
-    """Create an event loop for asyncio tests."""
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    yield loop
-    loop.close()
-
-
-# Mock NVD API
 @pytest.fixture
-def mock_nvd():
-    """Mock NVD API responses."""
-    mock_response = {
-        "vulnerabilities": [
-            {
-                "cve": {
-                    "id": "CVE-2023-0001",
-                    "description": {
-                        "description_data": [
-                            {"value": "Test vulnerability description"}
-                        ]
-                    }
-                },
-                "metrics": {
-                    "cvssV31": {
-                        "baseScore": 7.5,
-                        "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N"
-                    }
-                },
-                "published": "2023-01-01T00:00:00Z"
-            }
-        ]
-    }
-
-    with patch("app.vulnerability_scanner.cve_lookup.requests.get") as mock_get:
-        mock_get.return_value = Mock(json=lambda: mock_response, status_code=200)
-        yield mock_get
+def client(make_client):
+    return make_client("analyst")
 
 
-# Mock ARP Scanner
 @pytest.fixture
-def mock_arp():
-    """Mock ARP scanner."""
-    mock_hosts = [
-        {"ip": "192.168.1.100", "mac": "aa:bb:cc:dd:ee:01", "hostname": "host1"},
-        {"ip": "192.168.1.101", "mac": "aa:bb:cc:dd:ee:02", "hostname": "host2"},
-    ]
-
-    with patch("app.scanners.arp_scanner.arp_scan") as mock_scan:
-        mock_scan.return_value = mock_hosts
-        yield mock_scan
+def admin_client(make_client):
+    return make_client("admin")
 
 
-# Mock port scanner
 @pytest.fixture
-def mock_port_scanner():
-    """Mock port scanner."""
-    mock_ports = [
-        {"port": 22, "service": "ssh", "state": "open", "version": "OpenSSH 8.0"},
-        {"port": 80, "service": "http", "state": "open", "version": "Apache 2.4.41"},
-    ]
-
-    with patch("app.scanners.port_scanner.port_scan") as mock_scan:
-        mock_scan.return_value = mock_ports
-        yield mock_scan
-
-
-# Mock WebSocket Manager
-@pytest.fixture
-def mock_ws_manager():
-    """Mock WebSocket manager for testing."""
-    manager = MagicMock()
-    manager.connections = {}
-    manager.emit = MagicMock()
-    yield manager
+def anon_client(make_client):
+    return make_client(None)

@@ -33,10 +33,11 @@ function HostRow({ host }) {
       <button
         className="w-full flex items-center justify-between px-4 py-3 hover:bg-[var(--color-bg-surface-hover)] transition-colors"
         onClick={() => setExpanded((e) => !e)}
+        aria-expanded={expanded}
       >
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-blue-600/20 flex items-center justify-center">
-            <Server size={14} className="text-blue-500" />
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: "var(--accent-soft)" }}>
+            <Server size={14} className="text-accent-text" />
           </div>
           <div className="text-left">
             <p className="text-sm font-semibold text-primary font-mono">{host.ip}</p>
@@ -54,7 +55,10 @@ function HostRow({ host }) {
             </div>
           )}
           {host.mac && (
-            <p className="hidden md:block text-xs font-mono text-muted">{host.mac}</p>
+            <p className="hidden md:block text-xs text-muted">
+              <span className="font-mono">{host.mac}</span>
+              {host.mac_vendor && <span className="ml-1">· {host.mac_vendor}</span>}
+            </p>
           )}
           <Badge variant={openPorts.length > 0 ? "blue" : "gray"}>
             {openPorts.length} port{openPorts.length !== 1 ? "s" : ""}
@@ -71,6 +75,7 @@ function HostRow({ host }) {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-2">
             <InfoCell icon={Globe} label="IP" value={host.ip} mono />
             <InfoCell icon={Terminal} label="MAC" value={host.mac || "N/A"} mono />
+            <InfoCell label="Vendor" value={host.mac_vendor || (host.mac ? "Unknown" : "N/A")} />
             <InfoCell icon={Cpu} label="OS" value={host.os || "Unknown"} />
             <InfoCell label="Hostname" value={host.hostname || "N/A"} />
           </div>
@@ -91,7 +96,7 @@ function HostRow({ host }) {
                 <tbody>
                   {openPorts.map((port) => (
                     <tr key={`${port.port}-${port.protocol}`}>
-                      <td className="font-mono font-semibold text-blue-500">{port.port}</td>
+                      <td className="font-mono font-semibold text-accent-text">{port.port}</td>
                       <td className="text-muted uppercase text-xs">{port.protocol}</td>
                       <td className="font-medium text-primary">{port.service || "-"}</td>
                       <td className="text-xs text-muted">{port.version || "-"}</td>

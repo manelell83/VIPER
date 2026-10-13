@@ -1,6 +1,5 @@
 import asyncio
-import json
-from datetime import datetime
+import logging
 from concurrent.futures import ThreadPoolExecutor
 from typing import Callable, Awaitable
 
@@ -8,22 +7,32 @@ from sqlalchemy.orm import Session
 
 from app.models.scan import ScanSession, Host
 from app.scanners.interface_detector import get_interface_by_name
-from app.scanners.arp_scanner import arp_scan
+from app.scanners.arp_scanner import discover_hosts
+from app.scanners.network_calculator import network_size
+from app.scanners.oui import mac_vendor
+from app.core.config import settings
 from app.scanners.port_scanner import port_scan
 from app.scanners.network_calculator import resolve_target
 from app.vulnerability_scanner.vulnerability_engine import scan_all_hosts_vulnerabilities
 from app.attack_graph.graph_builder import build_attack_graph
 from app.attack_graph.path_engine import generate_attack_paths
 from app.exploitability.exploitability_engine import run_exploitability_analysis
+from app.core.timeutil import utcnow
+
+log = logging.getLogger(__name__)
 
 executor = ThreadPoolExecutor(max_workers=4)
+
+# Sent to the client for unexpected errors. The details (stack trace, paths,
+# library messages) go to the server log only, never to the browser.
+INTERNAL_ERROR_MESSAGE = "Scan failed due to an internal error (see server logs)"
 
 Emitter = Callable[[dict], Awaitable[None]]
 
 
 async def run_network_scan(scan_id: str, interface_name: str, db: Session, emit: Emitter):
     """Discover all hosts on a LAN by selecting an interface. Subnet is auto-calculated."""
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
 
     scan = db.query(ScanSession).filter(ScanSession.id == scan_id).first()
     if not scan:
@@ -33,6 +42,13 @@ async def run_network_scan(scan_id: str, interface_name: str, db: Session, emit:
         iface = get_interface_by_name(interface_name)
         if not iface:
             await _fail(scan, db, emit, f"Interface '{interface_name}' not found")
+            return
+
+        # Defence in depth: the API already refuses networks above the limit
+        size = network_size(iface["subnet"])
+        if size > settings.MAX_NETWORK_HOSTS:
+            await _fail(scan, db, emit,
+                        f"{iface['subnet']} has {size} addresses; the limit is {settings.MAX_NETWORK_HOSTS}.")
             return
 
         scan.status = "running"
@@ -46,17 +62,21 @@ async def run_network_scan(scan_id: str, interface_name: str, db: Session, emit:
             "ip": iface["ip"],
         }})
 
-        # --- ARP Discovery ---
-        await emit({"type": "progress", "message": f"Running ARP discovery on {iface['subnet']}...", "percent": 10})
-        raw_hosts = await loop.run_in_executor(executor, lambda: arp_scan(iface["subnet"]))
+        # --- Host discovery (ARP on the chosen interface, or ping sweep) ---
+        await emit({"type": "progress", "message": f"Discovering live hosts on {iface['subnet']}...", "percent": 10})
+        discovery = await loop.run_in_executor(executor, lambda: discover_hosts(iface["subnet"], iface["ip"]))
+        raw_hosts = discovery["hosts"]
+        scan.discovery_method = discovery["method"]
+        scan.discovery_note = discovery["note"]
+        db.commit()
+        if discovery["note"]:
+            await emit({"type": "progress", "message": discovery["note"], "percent": 20})
 
-        if not raw_hosts:
-            await emit({"type": "progress", "message": "No hosts responded to ARP. Trying ping sweep...", "percent": 20})
-
+        method = "ARP" if discovery["method"] == "arp" else "ping sweep"
         await emit({
             "type": "arp_complete",
-            "message": f"Discovered {len(raw_hosts)} host(s) via ARP",
-            "data": {"count": len(raw_hosts)},
+            "message": f"Discovered {len(raw_hosts)} live host(s) via {method}",
+            "data": {"count": len(raw_hosts), "method": discovery["method"]},
             "percent": 30,
         })
 
@@ -80,6 +100,7 @@ async def run_network_scan(scan_id: str, interface_name: str, db: Session, emit:
                 scan_id=scan_id,
                 ip=ip,
                 mac=raw_host.get("mac"),
+                mac_vendor=mac_vendor(raw_host.get("mac")),
                 hostname=scan_result.get("hostname") or raw_host.get("hostname"),
                 os=scan_result.get("os"),
                 os_accuracy=scan_result.get("os_accuracy"),
@@ -106,8 +127,9 @@ async def run_network_scan(scan_id: str, interface_name: str, db: Session, emit:
         await emit({"type": "progress", "message": "Analyzing exploitability...", "percent": 94})
         try:
             await run_exploitability_analysis(scan_id, db, emit)
-        except Exception as exp_exc:
-            await emit({"type": "progress", "message": f"Exploitability analysis skipped: {exp_exc}", "percent": 95})
+        except Exception:
+            log.exception("Exploitability analysis failed for scan %s", scan_id)
+            await emit({"type": "progress", "message": "Exploitability analysis skipped (internal error)", "percent": 95})
 
         # --- Attack Graph Generation ---
         await emit({"type": "progress", "message": "Building attack graph...", "percent": 96})
@@ -126,8 +148,9 @@ async def run_network_scan(scan_id: str, interface_name: str, db: Session, emit:
                     },
                     "percent": 99,
                 })
-        except Exception as ag_exc:
-            await emit({"type": "progress", "message": f"Attack graph skipped: {ag_exc}", "percent": 99})
+        except Exception:
+            log.exception("Attack graph generation failed for scan %s", scan_id)
+            await emit({"type": "progress", "message": "Attack graph skipped (internal error)", "percent": 99})
 
         _complete(scan, db)
 
@@ -138,13 +161,14 @@ async def run_network_scan(scan_id: str, interface_name: str, db: Session, emit:
             "percent": 100,
         })
 
-    except Exception as exc:
-        await _fail(scan, db, emit, str(exc))
+    except Exception:
+        log.exception("Scan %s failed", scan_id)
+        await _fail(scan, db, emit, INTERNAL_ERROR_MESSAGE)
 
 
 async def run_domain_scan(scan_id: str, target: str, db: Session, emit: Emitter):
     """Resolve a domain/IP and run a port scan against it."""
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
 
     scan = db.query(ScanSession).filter(ScanSession.id == scan_id).first()
     if not scan:
@@ -158,7 +182,11 @@ async def run_domain_scan(scan_id: str, target: str, db: Session, emit: Emitter)
 
         # Resolve domain → IP
         await emit({"type": "progress", "message": f"Resolving {target}...", "percent": 10})
-        ip = await loop.run_in_executor(executor, lambda: resolve_target(target))
+        try:
+            ip = await loop.run_in_executor(executor, lambda: resolve_target(target))
+        except ValueError as exc:            # expected: name does not resolve
+            await _fail(scan, db, emit, str(exc))
+            return
 
         await emit({"type": "progress", "message": f"Resolved to {ip}. Scanning ports...", "percent": 20})
 
@@ -188,8 +216,9 @@ async def run_domain_scan(scan_id: str, target: str, db: Session, emit: Emitter)
         await emit({"type": "progress", "message": "Analyzing exploitability...", "percent": 93})
         try:
             await run_exploitability_analysis(scan_id, db, emit)
-        except Exception as exp_exc:
-            await emit({"type": "progress", "message": f"Exploitability analysis skipped: {exp_exc}", "percent": 95})
+        except Exception:
+            log.exception("Exploitability analysis failed for scan %s", scan_id)
+            await emit({"type": "progress", "message": "Exploitability analysis skipped (internal error)", "percent": 95})
 
         # --- Attack Graph Generation ---
         await emit({"type": "progress", "message": "Building attack graph...", "percent": 96})
@@ -208,8 +237,9 @@ async def run_domain_scan(scan_id: str, target: str, db: Session, emit: Emitter)
                     },
                     "percent": 99,
                 })
-        except Exception as ag_exc:
-            await emit({"type": "progress", "message": f"Attack graph skipped: {ag_exc}", "percent": 99})
+        except Exception:
+            log.exception("Attack graph generation failed for scan %s", scan_id)
+            await emit({"type": "progress", "message": "Attack graph skipped (internal error)", "percent": 99})
 
         _complete(scan, db)
 
@@ -220,19 +250,20 @@ async def run_domain_scan(scan_id: str, target: str, db: Session, emit: Emitter)
             "percent": 100,
         })
 
-    except Exception as exc:
-        await _fail(scan, db, emit, str(exc))
+    except Exception:
+        log.exception("Scan %s failed", scan_id)
+        await _fail(scan, db, emit, INTERNAL_ERROR_MESSAGE)
 
 
 def _complete(scan: ScanSession, db: Session):
     scan.status = "completed"
-    scan.completed_at = datetime.utcnow()
+    scan.completed_at = utcnow()
     db.commit()
 
 
 async def _fail(scan: ScanSession, db: Session, emit: Emitter, error: str):
     scan.status = "failed"
     scan.error = error
-    scan.completed_at = datetime.utcnow()
+    scan.completed_at = utcnow()
     db.commit()
     await emit({"type": "error", "message": error})

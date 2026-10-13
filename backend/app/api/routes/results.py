@@ -1,7 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.api.deps import require_admin
 from app.core.database import get_db
+from app.models.user import User
 from app.models.scan import ScanSession, Host
 
 router = APIRouter()
@@ -29,8 +31,8 @@ async def get_scan_results(scan_id: str, db: Session = Depends(get_db)):
 
 
 @router.delete("/{scan_id}")
-async def delete_scan(scan_id: str, db: Session = Depends(get_db)):
-    """Delete a scan session and all associated hosts."""
+async def delete_scan(scan_id: str, db: Session = Depends(get_db), admin: User = Depends(require_admin)):
+    """Delete a scan session and all associated hosts. Admin only."""
     scan = db.query(ScanSession).filter(ScanSession.id == scan_id).first()
     if not scan:
         raise HTTPException(status_code=404, detail="Scan not found")

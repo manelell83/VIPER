@@ -1,60 +1,37 @@
-version: "3.9"
-
 services:
-  # PostgreSQL Database (optional for production)
-  postgres:
-    image: postgres:16-alpine
-    container_name: viperv2-postgres
+  backend:
+    build: ./backend
+    container_name: viperv2-backend
+    # Secrets (JWT_SECRET, NVD_API_KEY) come from backend/.env — see backend/.env.example.
+    # There is deliberately no fallback secret: the backend refuses to start without one.
+    env_file:
+      - ./backend/.env
     environment:
-      POSTGRES_DB: viperv2
-      POSTGRES_USER: viperv2_user
-      POSTGRES_PASSWORD: ${PGPASSWORD:-secure_password_here}
-    ports:
-      - "5432:5432"
+      - DATABASE_URL=sqlite:////app/data/viperv2.db
+      # Audit log of scan authorizations, kept in the data volume
+      - AUDIT_LOG_FILE=/app/data/audit.log
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - viperv2-db:/app/data
+    # Published on localhost only: the API is not reachable from other machines.
+    ports:
+      - "127.0.0.1:8001:8001"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U viperv2_user"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
       interval: 10s
       timeout: 5s
       retries: 5
     restart: unless-stopped
 
-  backend:
-    build:
-      context: ./backend
-      dockerfile: ../docker/Dockerfile.backend
-    container_name: viperv2-backend
-    ports:
-      - "8001:8001"
-    volumes:
-      - viperv2-db:/app/data
-    environment:
-      - DATABASE_URL=${DATABASE_URL:-sqlite:////app/data/viperv2.db}
-      - JWT_SECRET=${JWT_SECRET:-dev-secret-key}
-      - NVD_API_KEY=${NVD_API_KEY:-}
-      - DEBUG=false
-    depends_on:
-      postgres:
-        condition: service_healthy
-    # Required for ARP scanning and raw sockets on Linux
-    network_mode: host
-    cap_add:
-      - NET_ADMIN
-      - NET_RAW
-    restart: unless-stopped
-
   frontend:
-    build:
-      context: ./frontend
-      dockerfile: ../docker/Dockerfile.frontend
+    build: ./frontend
     container_name: viperv2-frontend
+    # nginx serves the React build and proxies /api and /ws to the backend service
     ports:
-      - "3000:80"
+      - "127.0.0.1:3000:80"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:
   viperv2-db:
-  postgres_data:

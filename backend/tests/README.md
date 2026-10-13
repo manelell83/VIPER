@@ -1,243 +1,87 @@
-# ViperV2 Backend Test Suite
+# Backend test suite
 
-## Overview
+**247 tests**, **68.5 % line coverage** of `app/`. Measured with pytest on Python 3.11 and 3.13 (the two CI versions).
 
-Comprehensive test suite for ViperV2 backend with **60+ tests** covering:
-- Models and database integration
-- API routes and endpoints
-- Error handling and validation
-- Concurrent operation isolation
+The tests run offline. Nmap, DNS and the NVD API are replaced by fakes. The only network activity is one test that opens a listening socket on `127.0.0.1`.
 
-## Installation
+## Running
+
+From the `backend/` directory:
 
 ```bash
-cd backend
+pip install -r requirements-dev.txt
 
-# Install test dependencies
-pip install pytest pytest-asyncio pytest-cov httpx factory-boy pytest-mock
-
-# Or use requirements.txt
-pip install -r requirements.txt
+pytest                      # whole suite
+pytest tests/api/test_auth.py               # one file
+pytest tests/api/test_auth.py::TestLogin    # one class
+pytest --cov=app --cov-report=term          # with coverage
 ```
 
-## Running Tests
+`conftest.py` sets `DATABASE_URL` (in-memory SQLite) and a test-only `JWT_SECRET` before the app is imported. The tests therefore don't need a `.env` file and never create `viperv2.db`.
 
-### All Tests
-```bash
-pytest
-```
+## Layout
 
-### Specific Test File
-```bash
-pytest tests/test_models.py
-```
-
-### Specific Test Class
-```bash
-pytest tests/test_models.py::TestScanSessionModel
-```
-
-### Specific Test
-```bash
-pytest tests/test_models.py::TestScanSessionModel::test_scan_session_creation
-```
-
-### With Coverage Report
-```bash
-pytest --cov=app --cov-report=html --cov-report=term
-```
-
-### Coverage Report (HTML)
-```bash
-# After running tests with --cov-report=html
-open htmlcov/index.html  # macOS
-# or
-start htmlcov/index.html  # Windows
-```
-
-### Run Only Fast Tests (skip slow/integration)
-```bash
-pytest -m "not slow and not integration"
-```
-
-### Run Only Unit Tests
-```bash
-pytest -m "unit"
-```
-
-### Verbose Output
-```bash
-pytest -v
-```
-
-## Test Structure
+The counts include each case of a parametrized test.
 
 ```
 tests/
-├── conftest.py                    # Shared fixtures
-├── test_models.py                 # Database models (8 tests)
-├── test_database.py               # DB integration (12 tests)
+├── conftest.py                       shared fixtures (see below)
+├── test_config.py                (3)   settings: no default JWT secret, bounds
+├── test_database.py             (10)   sessions, cascades, foreign keys
+├── test_models.py               (11)   ORM models and serialization
 ├── api/
-│   ├── test_scan.py              # Scan routes (12 tests)
-│   ├── test_vulnerabilities.py    # Vuln routes (8 tests)
-│   └── test_attack_graph.py       # Graph routes (10 tests)
+│   ├── test_auth.py             (56)   401 on every protected route, login,
+│   │                                   token validation, roles, WebSocket auth
+│   ├── test_scan.py             (28)   scan requests, target validation /
+│   │                                   nmap option injection, scan status
+│   ├── test_vulnerabilities.py   (9)   filters, per-host risk, risk summary
+│   ├── test_attack_graph.py      (4)   on-demand graph, regeneration, multi-scan
+│   └── test_reports.py           (3)   JSON / PDF export, markup in scanned data
 ├── scanners/
-│   └── test_arp_scanner.py        # (TODO)
+│   ├── test_port_scanner.py     (13)   nmap result parsing, socket fallback,
+│   │                                   refusal of non-IPv4 targets
+│   ├── test_network_calculator.py (22) hostname rules, DNS resolution errors
+│   └── test_scan_engine.py       (3)   domain-scan pipeline, error messages
 ├── vulnerability_scanner/
-│   └── test_cve_lookup.py         # (TODO)
+│   ├── test_risk_engine.py      (21)   host / network risk formulas
+│   ├── test_service_parser.py   (16)   nmap service -> NVD query
+│   └── test_cve_lookup.py       (21)   NVD response parsing, cache, API key
 └── attack_graph/
-    ├── test_graph_builder.py      # (TODO)
-    └── test_path_engine.py        # (TODO)
+    ├── test_attack_rules.py     (11)   rule matching, CVSS boost, port linking
+    └── test_graph_and_paths.py  (16)   graph construction, path scores
 ```
 
-## Test Coverage by Module
+## Fixtures
 
-| Module | Tests | Status |
-|--------|-------|--------|
-| Models | 8 | ✅ Complete |
-| Database | 12 | ✅ Complete |
-| Scan Routes | 12 | ✅ Complete |
-| Vulnerability Routes | 8 | ✅ Complete |
-| Attack Graph Routes | 10 | ✅ Complete |
-| ARP Scanner | 8 | 🔄 TODO |
-| CVE Lookup | 6 | 🔄 TODO |
-| Graph Builder | 5 | 🔄 TODO |
-| Path Engine | 5 | 🔄 TODO |
-| **TOTAL** | **74+** | **🎯 In Progress** |
+Shared fixtures, defined in `conftest.py`:
 
-## Fixtures Available
+| Fixture | Provides |
+|---|---|
+| `test_db` | A fresh in-memory SQLite session for each test. It uses `StaticPool`, so the TestClient thread sees the same database. |
+| `client` | A `TestClient` authenticated as an `analyst` user. |
+| `admin_client` | A `TestClient` authenticated as an `admin` user. |
+| `anon_client` | A `TestClient` with no token. |
+| `make_client(role)` | The factory behind the three clients above. |
 
-### Database & Client
-- `test_db`: In-memory SQLite database per test
-- `client`: FastAPI TestClient with test database
-- `event_loop`: Async event loop for asyncio tests
+`conftest.py` also provides a helper function (not a fixture), `create_user(db, username, role, is_active=True)`, which creates a user whose password is `TEST_PASSWORD`.
 
-### Mocks
-- `mock_arp`: Mock ARP scanner responses
-- `mock_port_scanner`: Mock port scanner responses
-- `mock_nvd`: Mock NVD API responses
-- `mock_ws_manager`: Mock WebSocket manager
+Fixtures local to a single file:
 
-### Test Data
-- `scan_session`: Test ScanSession
-- `host_with_scan`: Test Host within a scan
-- `scan_with_vulns`: Scan with 3 vulnerabilities
-- `scan_with_attack_graph`: Scan with attack graph
+| File | Fixtures |
+|---|---|
+| `api/test_scan.py` | `scheduled`: replaces the background scan jobs and the interface lookup, and records the calls. |
+| `api/test_vulnerabilities.py` | `scan_with_vulns` |
+| `attack_graph/test_graph_and_paths.py` | `scan`: three hosts (ssh, winrm, unknown port). |
+| `scanners/test_scan_engine.py` | `events`, `domain_scan`, `no_cve_lookup` |
+| `test_models.py` | `scan_session`, `host_with_scan`, `scan_with_graph` |
+| `vulnerability_scanner/test_cve_lookup.py` | `empty_cache`, `fake_nvd`, `no_delay` |
 
-## CI/CD Integration
+Async tests are plain `async def` functions. `pytest.ini` sets `asyncio_mode = auto`, so they need no marker.
 
-### GitHub Actions (`.github/workflows/test.yml`)
-Automatically runs tests on:
-- Push to any branch
-- Pull requests
+## CI
 
-```bash
-# Manual trigger
-gh workflow run test.yml
-```
+`.github/workflows/test.yml` runs the following on every push and on pull requests to `main`:
 
-### Coverage Requirements
-- Minimum: 70% code coverage
-- Fails if coverage drops below threshold
-- HTML report generated on failure
-
-## Common Issues & Solutions
-
-### `pytest: command not found`
-```bash
-pip install pytest
-# or
-python -m pytest
-```
-
-### Import errors in tests
-```bash
-# Ensure you're in backend directory
-cd backend
-
-# Reinstall in development mode
-pip install -e .
-```
-
-### Asyncio test failures
-```bash
-# Ensure pytest-asyncio is installed
-pip install pytest-asyncio
-
-# Update conftest.py has asyncio_mode = "auto"
-```
-
-### Database locked error
-```bash
-# SQLite can have concurrency issues
-# Tests use in-memory :memory: database to avoid this
-# If persists, increase sqlite timeout in conftest.py
-```
-
-## Writing New Tests
-
-### Template: Unit Test
-```python
-import pytest
-
-class TestMyFeature:
-    def test_my_feature_works(self, test_db):
-        """Describe what this tests."""
-        # Arrange
-        data = MyModel(...)
-        test_db.add(data)
-        test_db.commit()
-        
-        # Act
-        result = query_my_feature(data.id)
-        
-        # Assert
-        assert result is not None
-        assert result.status == "success"
-```
-
-### Template: Async Test
-```python
-@pytest.mark.asyncio
-async def test_async_route(client):
-    """Test async endpoint."""
-    response = await client.get("/endpoint")
-    assert response.status_code == 200
-```
-
-### Template: Mocked External Call
-```python
-from unittest.mock import patch
-
-def test_with_mock(mock_nvd):
-    """Test with mocked NVD API."""
-    # mock_nvd is already configured in conftest.py
-    response = search_cves("Apache", "2.4.1")
-    assert response is not None
-```
-
-## Performance
-
-### Test Execution Time
-- Full suite: ~15 seconds
-- Per module: ~2-3 seconds
-- Single test: <100ms
-
-### Optimization Tips
-- Use in-memory database for speed
-- Mock external APIs (NVD, EPSS)
-- Run only affected tests: `pytest --lf` (last failed)
-
-## Next Steps
-
-1. **Install pytest**: `pip install pytest pytest-asyncio pytest-cov`
-2. **Run baseline tests**: `pytest`
-3. **Check coverage**: `pytest --cov=app`
-4. **Fix any failures**
-5. **Add more tests** for uncovered modules (scanners, vulnerability engine, etc.)
-
-## Resources
-
-- [Pytest Documentation](https://docs.pytest.org)
-- [SQLAlchemy Testing](https://docs.sqlalchemy.org/en/20/orm/session_basics.html#using-the-session-in-concurrent-or-thread-local-patterns)
-- [FastAPI Testing](https://fastapi.tiangolo.com/advanced/testing-database/)
+- flake8 (syntax errors and undefined names only)
+- pytest with coverage on Python 3.11 and 3.13. The run fails below **50 %** coverage, a threshold set under the current figure to catch regressions.
+- `npm ci && npm run build` for the frontend

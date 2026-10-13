@@ -15,7 +15,7 @@ export default function InterfaceSelector({ value, onChange, disabled }) {
       const res = await interfacesApi.list();
       setInterfaces(res.interfaces);
       if (res.interfaces.length === 1 && !value) {
-        onChange(res.interfaces[0].name);
+        onChange(res.interfaces[0].name, res.interfaces[0]);
       }
     } catch (err) {
       setError(err.message);
@@ -61,18 +61,20 @@ export default function InterfaceSelector({ value, onChange, disabled }) {
           {interfaces.map((iface) => (
             <button
               key={iface.name}
-              disabled={disabled}
-              onClick={() => onChange(iface.name)}
+              disabled={disabled || iface.scannable === false}
+              title={iface.scannable === false ? `${iface.host_count.toLocaleString("en-US")} addresses: above the scan limit` : undefined}
+              onClick={() => onChange(iface.name, iface)}
+              aria-pressed={value === iface.name}
               className={`w-full text-left rounded-xl p-4 border transition-all duration-150 ${
                 value === iface.name
-                  ? "border-blue-500 bg-blue-500/10 ring-1 ring-blue-500"
+                  ? "border-[var(--accent)] bg-[var(--accent-soft)] ring-1 ring-[var(--accent)]"
                   : "border-[var(--color-border)] bg-[var(--color-bg-surface)] hover:border-[var(--color-border-input)] hover:bg-[var(--color-bg-surface-hover)]"
               } disabled:opacity-50 disabled:cursor-not-allowed`}
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
-                    value === iface.name ? "bg-blue-600" : "bg-[var(--color-bg-surface-hover)]"
+                    value === iface.name ? "bg-[var(--accent)]" : "bg-[var(--color-bg-surface-hover)]"
                   }`}>
                     <Wifi size={15} className={value === iface.name ? "text-white" : "text-tertiary"} />
                   </div>
@@ -83,6 +85,9 @@ export default function InterfaceSelector({ value, onChange, disabled }) {
                 </div>
                 <div className="text-right">
                   <p className="text-xs text-tertiary font-mono">{iface.subnet}</p>
+                  {iface.scannable === false && (
+                    <p className="text-xs text-warning mt-0.5">{iface.host_count.toLocaleString("en-US")} addresses: too large to scan</p>
+                  )}
                   <div className={`flex items-center gap-1 text-xs mt-0.5 ${iface.is_up ? "text-success" : "text-danger"}`}>
                     <span className={`w-1.5 h-1.5 rounded-full inline-block ${iface.is_up ? "bg-green-500" : "bg-red-500"}`} />
                     {iface.is_up ? "Active" : "Inactive"}
@@ -90,7 +95,7 @@ export default function InterfaceSelector({ value, onChange, disabled }) {
                 </div>
               </div>
               {value === iface.name && (
-                <div className="mt-3 pt-3 border-t border-blue-500/20 grid grid-cols-2 gap-2">
+                <div className="mt-3 pt-3 border-t border-[var(--accent-line)] grid grid-cols-2 gap-2">
                   <div>
                     <p className="text-xs text-muted">Subnet</p>
                     <p className="text-xs font-mono text-primary">{iface.subnet}</p>

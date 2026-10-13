@@ -35,9 +35,9 @@ export default function RiskCard({ network }) {
           className="h-full rounded-full transition-all duration-700"
           style={{
             width: `${Math.min(100, network_score)}%`,
-            background: level === "CRITICAL" ? "#ef4444" :
-              level === "HIGH" ? "#f97316" :
-              level === "MEDIUM" ? "#eab308" : "#3b82f6",
+            background: level === "CRITICAL" ? "var(--sev-critical)" :
+              level === "HIGH" ? "var(--sev-high)" :
+              level === "MEDIUM" ? "var(--sev-medium)" : "var(--sev-low)",
           }}
         />
       </div>

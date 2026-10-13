@@ -1,18 +1,17 @@
-import asyncio
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 from app.core.config import settings
-from app.core.database import engine, Base
-from app.core.state import set_main_loop
+from app.core.audit import configure_logging
+from app.core.database import engine, Base, add_missing_columns
+from app.api.deps import get_current_user
 from app.api.routes import interfaces, scan, topology, results, reports
 from app.api.routes import vulnerabilities
 from app.api.routes import attack_graph
 from app.api.routes import exploitability
-from app.api.routes import domain_recon
-from app.api.routes import ai_prioritization
-from app.api.routes import attack_validation
+from app.api.routes import recon
+from app.api.routes import prioritization
 from app.api.routes import auth
 from app.api import websocket as ws
 
@@ -22,15 +21,15 @@ import app.models.user                    # noqa: F401
 import app.vulnerability_scanner.models   # noqa: F401
 import app.attack_graph.models            # noqa: F401
 import app.exploitability.models          # noqa: F401
-import app.attack_validation.models       # noqa: F401
-import app.dast.models                     # noqa: F401
+import app.domain_recon.models            # noqa: F401
+import app.prioritization.models          # noqa: F401
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Capture the main uvicorn event loop so background threads can emit WS events
-    set_main_loop(asyncio.get_running_loop())
+    configure_logging(settings.AUDIT_LOG_FILE)
     Base.metadata.create_all(bind=engine)
+    add_missing_columns(engine)   # new columns on databases created by older versions
     yield
 
 
@@ -41,27 +40,33 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Auth uses a bearer token in the Authorization header (no cookies), so
+# credentials are not needed for CORS; only the methods/headers we use are allowed.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "DELETE"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
-app.include_router(auth.router,                   tags=["Auth"])
-app.include_router(interfaces.router,         prefix="/interfaces",          tags=["Interfaces"])
-app.include_router(scan.router,               prefix="/scan",                tags=["Scan"])
-app.include_router(topology.router,           prefix="/topology",            tags=["Topology"])
-app.include_router(results.router,            prefix="/results",             tags=["Results"])
-app.include_router(reports.router,            prefix="/reports",             tags=["Reports"])
-app.include_router(vulnerabilities.router,    prefix="/vulnerabilities",     tags=["Vulnerabilities"])
-app.include_router(attack_graph.router,       prefix="/attack-graph",        tags=["Attack Graph"])
-app.include_router(exploitability.router,     prefix="/exploitability",      tags=["Exploitability"])
-app.include_router(domain_recon.router,       prefix="/domain-recon",        tags=["Domain Recon"])
-app.include_router(ai_prioritization.router,  prefix="/ai",                  tags=["AI Prioritization"])
-app.include_router(attack_validation.router,  prefix="/attack-validation",   tags=["Attack Validation"])
-app.include_router(ws.router,                 tags=["WebSocket"])
+# Public: /auth/login, /health, / and the API docs. Every other HTTP route
+# requires a valid JWT (enforced here, once, for each router).
+# The WebSocket authenticates itself with its first message (see websocket.py).
+protected = [Depends(get_current_user)]
+
+app.include_router(auth.router,                                                tags=["Auth"])
+app.include_router(interfaces.router,      prefix="/interfaces",      dependencies=protected, tags=["Interfaces"])
+app.include_router(scan.router,            prefix="/scan",            dependencies=protected, tags=["Scan"])
+app.include_router(topology.router,        prefix="/topology",        dependencies=protected, tags=["Topology"])
+app.include_router(results.router,         prefix="/results",         dependencies=protected, tags=["Results"])
+app.include_router(reports.router,         prefix="/reports",         dependencies=protected, tags=["Reports"])
+app.include_router(vulnerabilities.router, prefix="/vulnerabilities", dependencies=protected, tags=["Vulnerabilities"])
+app.include_router(attack_graph.router,    prefix="/attack-graph",    dependencies=protected, tags=["Attack Graph"])
+app.include_router(exploitability.router,  prefix="/exploitability",  dependencies=protected, tags=["Exploitability"])
+app.include_router(recon.router,           prefix="/recon",           dependencies=protected, tags=["Domain Recon"])
+app.include_router(prioritization.router,  prefix="/prioritization",  dependencies=protected, tags=["AI Prioritization"])
+app.include_router(ws.router,                                                  tags=["WebSocket"])
 
 
 @app.get("/")

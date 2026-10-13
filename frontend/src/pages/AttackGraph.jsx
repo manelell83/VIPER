@@ -11,7 +11,7 @@ const RISK_COLORS = {
   CRITICAL: { text: "text-red-400", bg: "bg-red-500/10 border-red-500/40" },
   HIGH:     { text: "text-orange-400", bg: "bg-orange-500/10 border-orange-500/40" },
   MEDIUM:   { text: "text-yellow-400", bg: "bg-yellow-500/10 border-yellow-500/40" },
-  LOW:      { text: "text-blue-400", bg: "bg-blue-500/10 border-blue-500/40" },
+  LOW:      { text: "text-blue-300", bg: "bg-blue-500/10 border-blue-500/40" },
   NONE:     { text: "text-muted", bg: "" },
 };
 
@@ -65,15 +65,11 @@ export default function AttackGraph() {
   return (
     <div className="flex flex-col gap-4 animate-fadeIn">
       {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3 flex-shrink-0">
+      <div className="flex items-end justify-between flex-wrap gap-4 flex-shrink-0">
         <div>
-          <h1 className="text-2xl font-bold text-primary flex items-center gap-2">
-            <Network size={22} className="text-red-400" />
-            Attack Graph
-          </h1>
-          <p className="text-sm text-muted mt-1">
-            Dynamic attack path visualization from real scan data
-          </p>
+          <p className="eyebrow mb-2">Analysis</p>
+          <h1 className="page-title">Attack graph</h1>
+          <p className="page-subtitle">How an external attacker could move from exposed services to internal hosts.</p>
         </div>
 
         <div className="flex items-center gap-3">
@@ -155,9 +151,9 @@ export default function AttackGraph() {
             {/* Risk Analysis */}
             {analysis && (
               <div className="card flex-shrink-0">
-                <h2 className="text-sm font-semibold text-primary mb-3 flex items-center gap-2">
-                  <Zap size={14} className="text-yellow-400" />
-                  Risk Analysis
+                <h2 className="section-title mb-3 flex items-center gap-2">
+                  <Zap size={15} className="text-accent-text" />
+                  Risk analysis
                 </h2>
 
                 {analysis.weakest_entry && (
@@ -178,7 +174,7 @@ export default function AttackGraph() {
                 )}
 
                 <Link
-                  to={`/attack-paths?scan=${selectedScan}`}
+                  to={`/app/attack-paths?scan=${selectedScan}`}
                   className="mt-3 flex items-center gap-1 text-xs text-info hover:underline"
                 >
                   View all attack paths <ChevronRight size={12} />
@@ -188,9 +184,9 @@ export default function AttackGraph() {
 
             {/* Attack Paths */}
             <div className="card flex-1 min-h-0 overflow-y-auto">
-              <h2 className="text-sm font-semibold text-primary mb-3 flex items-center justify-between">
-                <span>Attack Paths</span>
-                <span className="badge badge-blue">{graphData?.paths?.length ?? 0}</span>
+              <h2 className="section-title mb-3 flex items-center justify-between">
+                <span>Attack paths</span>
+                <span className="badge badge-gray">{graphData?.paths?.length ?? 0}</span>
               </h2>
               <AttackPathList
                 paths={graphData?.paths ?? []}
@@ -219,7 +215,7 @@ function RecommendationCard({ rec }) {
     CRITICAL: "text-red-400 border-red-500/30",
     HIGH:     "text-orange-400 border-orange-500/30",
     MEDIUM:   "text-yellow-400 border-yellow-500/30",
-    LOW:      "text-blue-400 border-blue-500/30",
+    LOW:      "text-blue-300 border-blue-500/30",
   };
   const c = colors[rec.priority] ?? colors.LOW;
 

@@ -26,10 +26,11 @@ export function HistoryList() {
   };
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6 animate-fadeIn">
+    <div className="max-w-5xl space-y-6 animate-fadeIn">
       <div>
-        <h1 className="text-2xl font-bold text-primary">Scan History</h1>
-        <p className="text-sm text-muted mt-1">All past scan sessions</p>
+        <p className="eyebrow mb-2">Reporting</p>
+        <h1 className="page-title">History</h1>
+        <p className="page-subtitle">Every scan session, with its status, duration and exports.</p>
       </div>
 
       {loading ? (
@@ -38,8 +39,8 @@ export function HistoryList() {
         <div className="card py-12 text-center">
           <p className="text-muted">No scans yet.</p>
           <div className="flex justify-center gap-3 mt-4">
-            <Link to="/scan/network" className="btn-primary">Network Scan</Link>
-            <Link to="/scan/domain" className="btn-secondary">Domain Scan</Link>
+            <Link to="/app/scan/network" className="btn-primary">Network Scan</Link>
+            <Link to="/app/scan/domain" className="btn-secondary">Domain Scan</Link>
           </div>
         </div>
       ) : (
@@ -80,18 +81,17 @@ export function HistoryList() {
                     </td>
                     <td>
                       <div className="flex items-center gap-1">
-                        <Link to={`/history/${scan.id}`} className="btn-icon" title="View Details">
+                        <Link to={`/app/history/${scan.id}`} className="btn-icon" title="View Details">
                           <Eye size={14} />
                         </Link>
                         {scan.status === "completed" && (
-                          <a
-                            href={reportsApi.exportJson(scan.id)}
-                            download
+                          <button
+                            onClick={() => reportsApi.downloadJson(scan.id).catch(() => {})}
                             className="btn-icon"
                             title="Download JSON"
                           >
                             <Download size={14} />
-                          </a>
+                          </button>
                         )}
                         <button className="btn-icon" title="Delete" onClick={() => remove(scan.id)}>
                           <Trash2 size={14} className="text-danger" />
@@ -126,26 +126,27 @@ export function ScanDetail() {
   const { scan, hosts } = data;
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6 animate-fadeIn">
-      <div className="flex items-center gap-3">
-        <Link to="/history" className="btn-icon">
+    <div className="max-w-4xl space-y-6 animate-fadeIn">
+      <div className="flex items-center gap-3 flex-wrap">
+        <Link to="/app/history" className="btn-icon" aria-label="Back to history">
           <ArrowLeft size={16} />
         </Link>
         <div>
-          <h1 className="text-xl font-bold text-primary font-mono">{scan.target}</h1>
-          <p className="text-xs text-muted">{scan.type} · {scan.id.slice(0, 8)}…</p>
+          <p className="eyebrow mb-1">Scan · {scan.type}</p>
+          <h1 className="page-title font-mono" style={{ fontFamily: "var(--font-mono)", fontSize: "var(--text-xl)" }}>{scan.target}</h1>
+          <p className="text-xs text-muted font-mono">{scan.id.slice(0, 8)}…</p>
         </div>
         <div className="ml-auto flex items-center gap-2">
           <StatusBadge status={scan.status} />
           {scan.status === "completed" && (
             <>
-              <a href={reportsApi.exportJson(scan.id)} download className="btn-secondary text-xs py-1.5">
+              <button onClick={() => reportsApi.downloadJson(scan.id).catch(() => {})} className="btn-secondary text-xs py-1.5">
                 <Download size={13} /> JSON
-              </a>
-              <a href={reportsApi.exportPdf(scan.id)} download className="btn-secondary text-xs py-1.5">
+              </button>
+              <button onClick={() => reportsApi.downloadPdf(scan.id).catch(() => {})} className="btn-secondary text-xs py-1.5">
                 <Download size={13} /> PDF
-              </a>
-              <Link to={`/topology?scan=${scan.id}`} className="btn-info text-xs py-1.5">
+              </button>
+              <Link to={`/app/topology?scan=${scan.id}`} className="btn-info text-xs py-1.5">
                 View Topology
               </Link>
             </>
@@ -168,10 +169,35 @@ export function ScanDetail() {
         ))}
       </div>
 
+      {/* How live hosts were found (network scans) */}
+      {scan.discovery?.method && (
+        <div className="card-sm text-sm">
+          <p className="text-xs text-muted">Host discovery</p>
+          <p className="text-primary mt-0.5">{scan.discovery.method === "arp" ? "ARP on the selected interface" : "Ping sweep"}</p>
+          {scan.discovery.note && <p className="text-xs text-warning mt-1">{scan.discovery.note}</p>}
+        </div>
+      )}
+
+      {/* Authorization record (who confirmed they may scan this target, and when) */}
+      <div className="card-sm text-sm">
+        <p className="text-xs text-muted">Authorization</p>
+        {scan.authorization?.by ? (
+          <>
+            <p className="text-primary mt-0.5">
+              Confirmed by <span className="font-semibold">{scan.authorization.by}</span> on{" "}
+              <time dateTime={scan.authorization.at}>{new Date(scan.authorization.at).toLocaleString()}</time>
+            </p>
+            <p className="text-xs text-tertiary mt-1">&ldquo;{scan.authorization.statement}&rdquo;</p>
+          </>
+        ) : (
+          <p className="text-tertiary mt-0.5">No authorization recorded (scan made before this feature existed).</p>
+        )}
+      </div>
+
       {/* Hosts */}
       <div className="card">
-        <h2 className="text-sm font-semibold text-primary mb-4">
-          Hosts <span className="badge badge-blue ml-1">{hosts.length}</span>
+        <h2 className="section-title mb-4 flex items-center gap-2">
+          Hosts <span className="badge badge-gray">{hosts.length}</span>
         </h2>
         <ScanResults hosts={hosts} />
       </div>

@@ -15,10 +15,11 @@ export default function Reports() {
   }, []);
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6 animate-fadeIn">
+    <div className="max-w-4xl space-y-6 animate-fadeIn">
       <div>
-        <h1 className="text-2xl font-bold text-primary">Reports</h1>
-        <p className="text-sm text-muted mt-1">Export scan results as PDF or JSON</p>
+        <p className="eyebrow mb-2">Reporting</p>
+        <h1 className="page-title">Reports</h1>
+        <p className="page-subtitle">Download the PDF assessment or the raw JSON results of a completed scan.</p>
       </div>
 
       {loading ? (
@@ -32,11 +33,11 @@ export default function Reports() {
         <div className="space-y-3">
           {scans.map((scan) => (
             <div key={scan.id} className="card-sm flex items-center gap-4">
-              <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-blue-500/10 flex-shrink-0">
+              <div className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: "var(--accent-soft)" }}>
                 {scan.type === "network" ? (
-                  <Network size={16} className="text-blue-500" />
+                  <Network size={16} className="text-accent-text" />
                 ) : (
-                  <Globe size={16} className="text-blue-500" />
+                  <Globe size={16} className="text-accent-text" />
                 )}
               </div>
 
@@ -53,44 +54,23 @@ export default function Reports() {
               </div>
 
               <div className="flex items-center gap-2 flex-shrink-0">
-                <a
-                  href={reportsApi.exportJson(scan.id)}
-                  download
+                <button
+                  onClick={() => reportsApi.downloadJson(scan.id).catch(() => {})}
                   className="btn-secondary text-xs py-1.5 px-3"
                 >
                   <Download size={13} /> JSON
-                </a>
-                <a
-                  href={reportsApi.exportPdf(scan.id)}
-                  download
+                </button>
+                <button
+                  onClick={() => reportsApi.downloadPdf(scan.id).catch(() => {})}
                   className="btn-secondary text-xs py-1.5 px-3"
                 >
                   <Download size={13} /> PDF
-                </a>
+                </button>
               </div>
             </div>
           ))}
         </div>
       )}
-
-      {/* AI Placeholder */}
-      <div className="card border-dashed border-purple-500/30 bg-purple-500/5">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-purple-500/20 flex items-center justify-center">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-purple-400">
-              <path d="M12 2L2 7l10 5 10-5-10-5z" />
-              <path d="M2 17l10 5 10-5" />
-              <path d="M2 12l10 5 10-5" />
-            </svg>
-          </div>
-          <div>
-            <p className="text-sm font-semibold text-purple-400">AI Analysis — Coming Soon</p>
-            <p className="text-xs text-muted mt-0.5">
-              Intelligent vulnerability assessment and risk scoring powered by AI
-            </p>
-          </div>
-        </div>
-      </div>
     </div>
   );
 }

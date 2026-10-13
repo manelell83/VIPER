@@ -1,5 +1,4 @@
 import json
-from datetime import datetime
 from uuid import uuid4
 
 from sqlalchemy import (
@@ -8,6 +7,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
+from app.core.timeutil import iso_utc, utcnow
 
 
 class AttackGraph(Base):
@@ -15,7 +15,7 @@ class AttackGraph(Base):
 
     id = Column(String, primary_key=True, default=lambda: str(uuid4()))
     scan_id = Column(String, ForeignKey("scan_sessions.id", ondelete="CASCADE"), nullable=False, unique=True)
-    generated_at = Column(DateTime, default=datetime.utcnow)
+    generated_at = Column(DateTime, default=utcnow)
     node_count = Column(Integer, default=0)
     edge_count = Column(Integer, default=0)
     path_count = Column(Integer, default=0)
@@ -31,7 +31,7 @@ class AttackGraph(Base):
         return {
             "id": self.id,
             "scan_id": self.scan_id,
-            "generated_at": self.generated_at.isoformat() if self.generated_at else None,
+            "generated_at": iso_utc(self.generated_at),
             "node_count": self.node_count,
             "edge_count": self.edge_count,
             "path_count": self.path_count,
@@ -99,6 +99,13 @@ class AttackEdge(Base):
     cve_ids_json = Column(Text, default="[]")
     score = Column(Float, default=0.0)  # 0-100, higher = more dangerous
     description = Column(Text, nullable=True)
+    # Evidence-based 3-component breakdown (see scoring.py)
+    reachability = Column(Float, nullable=True)
+    exploitability = Column(Float, nullable=True)
+    impact = Column(Float, nullable=True)
+    factors_json = Column(Text, default="[]")
+    mitre_json = Column(Text, default="[]")
+    justification = Column(Text, nullable=True)
 
     graph = relationship("AttackGraph", back_populates="edges")
     source_node = relationship(
@@ -125,6 +132,12 @@ class AttackEdge(Base):
             "cve_ids": json.loads(self.cve_ids_json or "[]"),
             "score": self.score,
             "description": self.description,
+            "reachability": self.reachability,
+            "exploitability": self.exploitability,
+            "impact": self.impact,
+            "factors": json.loads(self.factors_json or "[]"),
+            "mitre": json.loads(self.mitre_json or "[]"),
+            "justification": self.justification,
         }
 
 
@@ -142,6 +155,14 @@ class AttackPath(Base):
     target_ip = Column(String, nullable=True)
     severity = Column(String, default="LOW")
     cve_ids_json = Column(Text, default="[]")
+    # Evidence-based 3-component breakdown + justification + MITRE (see scoring.py)
+    reachability_score = Column(Float, nullable=True)
+    exploitability_score = Column(Float, nullable=True)
+    impact_score = Column(Float, nullable=True)
+    factors_json = Column(Text, default="[]")
+    mitre_json = Column(Text, default="[]")
+    justification = Column(Text, nullable=True)
+    hops_json = Column(Text, default="[]")
 
     graph = relationship("AttackGraph", back_populates="paths")
 
@@ -158,4 +179,11 @@ class AttackPath(Base):
             "target_ip": self.target_ip,
             "severity": self.severity,
             "cve_ids": json.loads(self.cve_ids_json or "[]"),
+            "reachability_score": self.reachability_score,
+            "exploitability_score": self.exploitability_score,
+            "impact_score": self.impact_score,
+            "factors": json.loads(self.factors_json or "[]"),
+            "mitre": json.loads(self.mitre_json or "[]"),
+            "justification": self.justification,
+            "hops": json.loads(self.hops_json or "[]"),
         }
